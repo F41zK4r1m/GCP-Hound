@@ -17,6 +17,9 @@ from collectors.users_groups_collector import collect_users_and_groups, analyze_
 from collectors.sa_key_analyzer import analyze_service_account_key_access, build_key_access_edges
 from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_workspace_admin_status
 from collectors.edge_builder import build_edges
+from collectors.iam_collector import collect_iam, analyze_cross_project_permissions  # ← NEW IMPORT
+from collectors.user_collector import collect_users  # ← NEW IMPORT
+from collectors.folder_collector import collect_folders, build_folder_edges  # ← NEW IMPORT
 from bloodhound.json_builder import export_bloodhound_json
 from utils.auth import get_google_credentials, get_active_account
 from google.auth import impersonated_credentials
@@ -233,13 +236,25 @@ For more authentication details: https://cloud.google.com/docs/authentication
         bigquery_datasets = collect_bigquery_resources(creds, projects) if capabilities.get("BigQuery") else []
         gke_clusters = collect_gke_clusters(creds, projects) if capabilities.get("GKE Clusters") else []
         
+        # ← NEW: Add IAM collection
+        print(f"\n[*] Phase 3A: IAM Policy Enumeration")
+        iam_data = collect_iam(creds, projects)
+        outbound_permissions = analyze_cross_project_permissions(creds, user, projects)
+        
+        # ← NEW: Add folder collection
+        print(f"\n[*] Phase 3B: Organizational Structure Enumeration")
+        folders, folder_hierarchy = collect_folders(creds, [])  # Pass empty for org auto-discovery
+        
         if args.verbose:
             print(f"[*] Found: {len(sacs)} SAs, {len(buckets)} buckets, {len(secrets)} secrets")
             print(f"[*] Found: {len(instances)} instances, {len(bigquery_datasets)} datasets, {len(gke_clusters)} clusters")
+            print(f"[*] Found IAM data for {len(iam_data)} projects")  # ← NEW
+            print(f"[*] Found outbound control capabilities in {len(outbound_permissions)} projects")  # ← NEW
+            print(f"[*] Found {len(folders)} folders in organizational hierarchy")  # ← NEW
 
         # CONDITIONAL Users/Groups enumeration
         if has_admin_sdk_access:
-            users, groups, group_memberships = collect_users_and_groups(creds)
+            users, groups, group_memberships = collect_users(creds, projects)  # ← UPDATED IMPORT
             if args.verbose:
                 print(f"[*] Found: {len(users)} users, {len(groups)} groups")
         else:
@@ -301,7 +316,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
         
         # Phase 5: Build ALL edges
         print(f"\n[*] Phase 5: Building Complete Attack Path Graph")
-        base_edges = build_edges(projects, [], [], sacs, buckets, secrets)
+        base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets)  # ← UPDATED: Pass iam_data
         key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
         secret_access_edges = build_secret_access_edges(secrets, secret_access_analysis, user) if secret_access_analysis else []
         compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
@@ -309,8 +324,9 @@ For more authentication details: https://cloud.google.com/docs/authentication
         gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
         users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
         escalation_edges = privesc_analyzer.build_escalation_edges(user)
+        folder_edges = build_folder_edges(folders, folder_hierarchy, projects)  # ← NEW: Add folder edges
         
-        all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + escalation_edges
+        all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + escalation_edges + folder_edges  # ← UPDATED: Include folder_edges
         
         if args.verbose:
             print(f"[*] Built {len(all_edges)} total attack relationships")
@@ -341,6 +357,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"    GKE Clusters: {len(gke_clusters)}")
         print(f"    Users: {len(users)}")
         print(f"    Groups: {len(groups)}")
+        print(f"    IAM Bindings: {sum(len(iam.get('bindings', [])) for iam in iam_data)}")  # ← NEW
+        print(f"    Folders: {len(folders)}")  # ← NEW
         print()
         print(f"🔍 {colorize('SECURITY ANALYSIS:', TerminalColors.CYAN)}")
         print(f"    Service Account Key Analysis: {len(key_analysis)} analyzed")
@@ -349,6 +367,9 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"    BigQuery Access Analysis: {len(bigquery_access_analysis)} datasets analyzed")
         print(f"    GKE Escalation Analysis: {len(gke_escalation_analysis)} clusters analyzed")
         print(f"    Users/Groups Escalation Analysis: {len(users)} users, {len(groups)} groups analyzed")
+        print(f"    IAM Policy Analysis: {len(iam_data)} projects analyzed")  # ← NEW
+        print(f"    Outbound Control Analysis: {len(outbound_permissions)} projects with permissions")  # ← NEW
+        print(f"    Organizational Structure Analysis: {len(folders)} folders analyzed")  # ← NEW
         if total_escalation_paths > 0:
             print(f"    {colorize(f'Privilege Escalation Paths: {total_escalation_paths}', TerminalColors.YELLOW)}")
         print()
@@ -361,6 +382,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"    GKE Cluster Edges: {len(gke_edges)}")
         print(f"    Users/Groups Edges: {len(users_groups_edges)}")
         print(f"    Advanced Escalation Edges: {len(escalation_edges)}")
+        print(f"    Folder Relationship Edges: {len(folder_edges)}")  # ← NEW
         print(f"    {colorize(f'Total BloodHound Attack Edges: {len(all_edges)}', TerminalColors.BOLD)}")
         if critical_edges > 0:
             print(f"    {colorize(f'🚨 CRITICAL Attack Paths: {critical_edges}', TerminalColors.RED + TerminalColors.BOLD)}")
