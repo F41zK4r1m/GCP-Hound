@@ -1,0 +1,25 @@
+# Google Cloud Python client
+google-api-python-client
+
+# Authentication
+google-auth
+google-auth-httplib2
+
+# BigQuery
+google-cloud-bigquery
+
+# Storage
+google-cloud-storage
+
+# Secret Manager
+google-cloud-secret-manager
+
+# Kubernetes client for Python (for GKE)
+kubernetes
+
+# Requests and other utilities
+requests
+PyYAML
+
+#https://github.com/p0dalirius/bhopengraph
+bhopengraph
