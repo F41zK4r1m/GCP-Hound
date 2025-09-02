@@ -1,4 +1,5 @@
 import os
+import re
 from google.oauth2 import service_account
 
 def get_google_credentials():
@@ -20,3 +21,32 @@ def get_active_account(creds):
     if hasattr(creds, "service_account_email"):
         return creds.service_account_email
     return "unknown/service-account"
+
+def get_safe_output_filename(email):
+    """
+    Generate safe output filename based on authenticated user email.
+    Takes first word of username and sanitizes it for filesystem safety.
+    
+    Examples:
+    - compute@project.iam.gserviceaccount.com → compute_gcp-bhopgraph.json
+    - script@project.iam.gserviceaccount.com → script_gcp-bhopgraph.json
+    - john.doe@example.com → john_gcp-bhopgraph.json
+    """
+    if not email or '@' not in email:
+        return "gcp-bhopgraph.json"
+    
+    # Extract username part before @
+    username = email.split('@')[0]
+    
+    # Split by non-alphanumeric characters and get first word
+    tokens = re.split(r'[^a-zA-Z0-9]', username)
+    first_word = tokens[0].lower() if tokens and tokens[0] else ''
+    
+    # Sanitize for safe filesystem name (keep only alphanumeric, underscore, hyphen)
+    safe_name = re.sub(r'[^a-z0-9_-]', '', first_word)
+    
+    # Fallback if username becomes empty after sanitization
+    if not safe_name:
+        safe_name = "output"
+    
+    return f"{safe_name}_gcp-bhopgraph.json"
