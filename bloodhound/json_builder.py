@@ -38,7 +38,112 @@ def sanitize_property_value(value):
         return [str(v) if v is not None else "" for v in value]
     return str(value)
 
-def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges):
+def get_user_privilege_info(creds, current_user, projects):
+    """
+    Dynamically determine user's privilege level based on actual IAM roles
+    """
+    if not creds or not current_user or not projects:
+        return {
+            "privilegeLevel": "UNKNOWN",
+            "accessLevel": "LIMITED",
+            "riskLevel": "MEDIUM",
+            "remediationPriority": "MEDIUM",
+            "detectedRoles": []
+        }
+    
+    try:
+        from googleapiclient.discovery import build
+        
+        crm = build("cloudresourcemanager", "v1", credentials=creds)
+        highest_privilege = "NONE"
+        detected_roles = []
+        
+        # Check roles across all accessible projects
+        for project in projects[:3]:  # Limit to first 3 projects for performance
+            project_id = project.get('projectId')
+            if not project_id:
+                continue
+                
+            try:
+                # Get IAM policy for project
+                policy = crm.projects().getIamPolicy(
+                    resource=project_id,
+                    body={}
+                ).execute()
+                
+                # Check roles for this user/service account
+                user_identifiers = [
+                    f'user:{current_user}',
+                    f'serviceAccount:{current_user}',
+                    current_user
+                ]
+                
+                for binding in policy.get('bindings', []):
+                    for identifier in user_identifiers:
+                        if identifier in binding.get('members', []):
+                            role = binding.get('role', '')
+                            detected_roles.append(role)
+                            
+                            # Determine privilege level from role
+                            if role in ['roles/owner']:
+                                highest_privilege = "OWNER"
+                            elif role in ['roles/editor'] and highest_privilege not in ["OWNER"]:
+                                highest_privilege = "ADMIN"
+                            elif role == 'roles/viewer' and highest_privilege not in ["OWNER", "ADMIN"]:
+                                highest_privilege = "VIEWER"
+                            elif 'admin' in role.lower() and highest_privilege not in ["OWNER", "ADMIN"]:
+                                highest_privilege = "ADMIN"
+                            elif highest_privilege == "NONE":
+                                highest_privilege = "LIMITED"
+                                
+            except Exception:
+                continue
+        
+        # Map privilege to security properties
+        if highest_privilege == "OWNER":
+            return {
+                "privilegeLevel": "OWNER",
+                "accessLevel": "FULL_ACCESS", 
+                "riskLevel": "CRITICAL",
+                "remediationPriority": "CRITICAL",
+                "detectedRoles": detected_roles
+            }
+        elif highest_privilege == "ADMIN":
+            return {
+                "privilegeLevel": "ADMIN",
+                "accessLevel": "FULL_ACCESS", 
+                "riskLevel": "HIGH",
+                "remediationPriority": "HIGH",
+                "detectedRoles": detected_roles
+            }
+        elif highest_privilege == "VIEWER":
+            return {
+                "privilegeLevel": "VIEWER",
+                "accessLevel": "READ_ONLY",
+                "riskLevel": "LOW", 
+                "remediationPriority": "LOW",
+                "detectedRoles": detected_roles
+            }
+        else:
+            return {
+                "privilegeLevel": "LIMITED",
+                "accessLevel": "RESTRICTED",
+                "riskLevel": "MEDIUM",
+                "remediationPriority": "MEDIUM",
+                "detectedRoles": detected_roles
+            }
+            
+    except Exception as e:
+        print(f"[DEBUG] Error checking user privileges: {e}")
+        return {
+            "privilegeLevel": "UNKNOWN",
+            "accessLevel": "LIMITED",
+            "riskLevel": "MEDIUM", 
+            "remediationPriority": "MEDIUM",
+            "detectedRoles": []
+        }
+
+def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None):
     graph = OpenGraph(source_kind="GCPHound")
     node_id_map = {}
 
@@ -189,25 +294,37 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(bucket_name):
             node_id_map[variation] = bucket_name
 
-    # Add current user with CLEAN security-focused properties
-    current_user = "script@data-papouille.iam.gserviceaccount.com"
+    # FIXED: Add current user with DYNAMIC identity AND privilege detection
+    if creds:
+        from utils.auth import get_active_account
+        current_user = get_active_account(creds)
+    else:
+        current_user = "unknown@unknown.iam.gserviceaccount.com"
+    
+    # Extract username for additional properties
+    current_user_name = current_user.split('@')[0] if '@' in current_user else current_user
+    
+    # NEW: Get actual privilege information dynamically
+    privilege_info = get_user_privilege_info(creds, current_user, projects)
     
     clean_properties = {
-        # Core identification
+        # Core identification (now dynamic based on actual authenticated user)
         "name": current_user,
         "displayname": current_user,
         "objectid": current_user,
         "email": current_user,
         "description": f"Current User: {current_user}",
         
-        # Security analysis
+        # Security analysis (NOW DYNAMIC based on actual IAM roles)
         "gcpResourceType": "User Account",
-        "privilegeLevel": "ADMIN",
-        "accessLevel": "FULL_ACCESS",
-        "lastLogin": "2025-09-01",
-        "mfaEnabled": True,
-        "riskLevel": "HIGH",
-        "remediationPriority": "CRITICAL",
+        "privilegeLevel": privilege_info["privilegeLevel"],        # ← DYNAMIC!
+        "accessLevel": privilege_info["accessLevel"],              # ← DYNAMIC!
+        "riskLevel": privilege_info["riskLevel"],                  # ← DYNAMIC!
+        "remediationPriority": privilege_info["remediationPriority"], # ← DYNAMIC!
+        "lastLogin": "2025-09-01",  # TODO: Get from Cloud Asset API
+        "mfaEnabled": True,         # TODO: Get from Admin SDK
+        "username": current_user_name,
+        "detectedRoles": privilege_info.get("detectedRoles", []),  # NEW: List actual roles
         
         # BloodHound compatibility
         "primarykind": "User",
@@ -305,7 +422,19 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
     # Export with schema validation
     os.makedirs("./output", exist_ok=True)
-    output_file = "./output/gcp-bhopengraph.json"
+    
+    # FIXED: Dynamic filename generation based on authenticated user
+    if creds:
+        try:
+            from utils.auth import get_safe_output_filename, get_active_account
+            user_email = get_active_account(creds)
+            output_filename = get_safe_output_filename(user_email)
+        except Exception:
+            output_filename = "gcp-bhopgraph.json"
+    else:
+        output_filename = "gcp-bhopgraph.json"
+    
+    output_file = os.path.join("./output", output_filename)
     
     success = graph.export_to_file(output_file)
     
