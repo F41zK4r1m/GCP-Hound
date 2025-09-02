@@ -338,7 +338,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
         if not os.path.exists(args.output):
             os.makedirs(args.output)
             
-        output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds)
+        output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data)
         
         # Final comprehensive summary
         total_escalation_paths = sum(len(r.get('critical_paths', [])) + len(r.get('high_risk_paths', [])) for r in escalation_results)
