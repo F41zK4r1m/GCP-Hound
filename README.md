@@ -18,6 +18,14 @@
 
 **GCP-Hound** is a cutting-edge **attack path discovery and privilege escalation analysis tool** for Google Cloud Platform environments. Built on the BloodHound OpenGraph framework, it transforms complex GCP IAM relationships into interactive attack graphs, empowering security teams to identify and remediate critical cloud vulnerabilities.
 
+> Example graphs:
+
+<img width="1905" height="863" alt="image" src="https://github.com/user-attachments/assets/ecc54d6a-524a-4668-8163-1c716a0ee9bb" />
+
+<img width="1887" height="953" alt="image" src="https://github.com/user-attachments/assets/b1cab70b-9bda-47bb-af2b-e5c1625a09a7" />
+
+
+
 ### 🔥 What Makes GCP-Hound Special
 
 - **🎨 Beautiful Visualizations**: Custom GCP icons and professional graph layouts in BloodHound
