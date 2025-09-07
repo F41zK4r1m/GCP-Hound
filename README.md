@@ -24,6 +24,10 @@
 
 <img width="1887" height="953" alt="image" src="https://github.com/user-attachments/assets/b1cab70b-9bda-47bb-af2b-e5c1625a09a7" />
 
+<img width="1923" height="778" alt="image" src="https://github.com/user-attachments/assets/fa8c187a-b171-48f4-b2d9-d77292c76136" />
+
+<img width="1436" height="811" alt="image" src="https://github.com/user-attachments/assets/fddd41e3-4125-4869-b8d2-f475751f0cb4" />
+
 
 
 ### 🔥 What Makes GCP-Hound Special
