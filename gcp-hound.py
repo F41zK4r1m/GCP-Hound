@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 import argparse
 import logging
+import urllib3
 from collectors.discovery import discover_projects_comprehensive, discover_apis_for_projects, assess_enumeration_capabilities
 from collectors.service_account_collector import collect_service_accounts
 from collectors.bucket_collector import collect_buckets
@@ -17,14 +18,20 @@ from collectors.users_groups_collector import collect_users_and_groups, analyze_
 from collectors.sa_key_analyzer import analyze_service_account_key_access, build_key_access_edges
 from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_workspace_admin_status
 from collectors.edge_builder import build_edges
-from collectors.iam_collector import collect_iam, analyze_cross_project_permissions  # ← NEW IMPORT
-from collectors.user_collector import collect_users  # ← NEW IMPORT
-from collectors.folder_collector import collect_folders, build_folder_edges  # ← NEW IMPORT
+from collectors.iam_collector import collect_iam, analyze_cross_project_permissions
+from collectors.user_collector import collect_users
+from collectors.folder_collector import collect_folders, build_folder_edges
 from bloodhound.json_builder import export_bloodhound_json
+from bloodhound.icon_registry import register_gcp_icons_and_search
 from utils.auth import get_google_credentials, get_active_account
 from google.auth import impersonated_credentials
+from googleapiclient.errors import HttpError
 import google.auth
 import google.auth.exceptions
+import requests
+
+# Disable urllib3 warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class TerminalColors:
     """ANSI color codes for colorful terminal output"""
@@ -41,6 +48,34 @@ class TerminalColors:
 def colorize(text, color):
     """Add color to text for terminal output"""
     return f"{color}{text}{TerminalColors.RESET}"
+
+def handle_api_error(e, context="API call", args=None):
+    """Centralized error handling for GCP API calls"""
+    if args and args.debug:
+        logger = logging.getLogger("GCP-Hound")
+        logger.warning(f"[DEBUG] {context}: {str(e)}")
+        return False
+    elif isinstance(e, HttpError) and e.status_code == 403:
+        if "SERVICE_DISABLED" in str(e):
+            if args and args.verbose:
+                print(f"[!] {context}: API not enabled")
+        elif "PERMISSION_DENIED" in str(e) or "accessNotConfigured" in str(e):
+            if args and args.verbose:
+                print(f"[!] {context}: Insufficient permissions")
+        return False
+    elif isinstance(e, Exception):
+        if args and args.verbose:
+            print(f"[!] {context}: Error occurred")
+        return False
+    return False
+
+def get_bloodhound_token():
+    """Get BloodHound API token from environment variable"""
+    token = os.getenv('BLOODHOUND_TOKEN')
+    if not token:
+        # Try alternative environment variable names
+        token = os.getenv('BH_TOKEN') or os.getenv('BLOODHOUND_API_TOKEN')
+    return token
 
 def setup_impersonation(service_account_email, verbose=False):
     """Setup impersonated credentials for a service account"""
@@ -90,35 +125,23 @@ AUTHENTICATION:
     • Access BigQuery datasets, GKE clusters
     • (Optional) Google Workspace Admin API for user/group enumeration
 
-ENUMERATION PHASES:
-  Phase 1-3: Project discovery, API assessment, resource enumeration
-  Phase 4A:  Service account key access analysis  
-  Phase 4B:  Secret access privilege analysis
-  Phase 4C:  Compute instance privilege escalation analysis
-  Phase 4D:  BigQuery access privilege analysis
-  Phase 4E:  GKE cluster privilege escalation analysis
-  Phase 4F:  Users/Groups privilege escalation analysis
-  Phase 4G:  Comprehensive privilege escalation analysis
-  Phase 5:   Complete attack path graph building
-  Phase 6:   BloodHound export with custom GCP icons
-
-RESOURCES COVERED:
-  • Projects, Service Accounts, Storage Buckets, Secrets
-  • Compute Instances, BigQuery Datasets, GKE Clusters  
-  • Users/Groups (with Workspace Admin detection)
-  • 20+ different attack relationship types
+BLOODHOUND SETUP:
+  For search functionality, set your BloodHound API token:
+    $ export BLOODHOUND_TOKEN="your-bloodhound-api-token"
+    
+  Get token from BloodHound UI → Developer Tools → Network → Authorization header
 
 Examples:
   # First authenticate
   $ gcloud auth application-default login
+  $ export BLOODHOUND_TOKEN="your-token"
   
   # Then run analysis
-  python3 gcp-hound.py                                    # Full comprehensive analysis
-  python3 gcp-hound.py -v                                 # Verbose progress output
-  python3 gcp-hound.py -d                                 # Debug technical details
-  python3 gcp-hound.py -p my-gcp-project                  # Target specific project  
-  python3 gcp-hound.py -i user@project.iam.gserviceaccount.com  # Impersonate service account
-  python3 gcp-hound.py -v -d -o /tmp/results              # Verbose debug with custom output
+  python3 gcp-hound.py                                    # Clean output
+  python3 gcp-hound.py -v                                 # Verbose progress
+  python3 gcp-hound.py -d                                 # Debug details
+  python3 gcp-hound.py -p my-gcp-project                  # Target project
+  python3 gcp-hound.py -i user@project.iam.gserviceaccount.com  # Impersonate
 
 For more authentication details: https://cloud.google.com/docs/authentication
         """
@@ -141,8 +164,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
     
     args = parser.parse_args()
 
-    # Setup logging
-    log_level = logging.WARNING
+    # Setup logging with proper cleanup
+    log_level = logging.ERROR  # Default to quiet
     if args.debug:
         log_level = logging.DEBUG
     elif args.verbose:
@@ -154,6 +177,14 @@ For more authentication details: https://cloud.google.com/docs/authentication
         datefmt='%H:%M:%S'
     )
     logger = logging.getLogger("GCP-Hound")
+
+    # Suppress noisy third-party library logs unless debug mode
+    if not args.debug:
+        logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
+        logging.getLogger('googleapiclient.discovery').setLevel(logging.ERROR)
+        logging.getLogger('google.auth').setLevel(logging.ERROR)
+        logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+        logging.getLogger('google.auth.transport.requests').setLevel(logging.ERROR)
 
     # Print banner unless quiet mode
     if not args.quiet:
@@ -188,9 +219,33 @@ For more authentication details: https://cloud.google.com/docs/authentication
         
         print(f"[+] Running as: {colorize(user, TerminalColors.GREEN)}")
         
+        # Register GCP search functionality
+        if not args.no_icons:
+            try:
+                BLOODHOUND_URL = "http://localhost:8080"
+                bloodhound_token = get_bloodhound_token()
+                
+                if bloodhound_token:
+                    register_gcp_icons_and_search(BLOODHOUND_URL, bloodhound_token)
+                    if args.verbose:
+                        print(f"[+] {colorize('GCP search enabled in BloodHound UI', TerminalColors.GREEN)}")
+                else:
+                    if args.verbose:
+                        print(f"[*] {colorize('BloodHound token not set - search via Cypher only', TerminalColors.YELLOW)}")
+                        
+            except Exception as e:
+                if args.debug:
+                    print(f"[DEBUG] Search registration failed: {e}")
+        
         # Phase 1-3: Discovery and enumeration
         print(f"\n[*] 🔍 {colorize('Phase 1-3: Reconnaissance & Resource Discovery', TerminalColors.CYAN)}")
-        projects, discovery_method = discover_projects_comprehensive(creds)
+        try:
+            projects, discovery_method = discover_projects_comprehensive(creds)
+        except Exception as e:
+            handle_api_error(e, "Project discovery", args)
+            if "Cloud Resource Manager API disabled" in str(e):
+                print("[!] Cloud Resource Manager API: Access denied")
+            projects = []
         
         if not projects:
             print(f"{colorize('[!] No projects discovered - cannot continue', TerminalColors.RED)}")
@@ -198,6 +253,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
         
         if args.verbose:
             print(f"[*] Discovered {len(projects)} projects using {discovery_method}")
+        else:
+            print(f"[+] Found {len(projects)} projects")
 
         # Apply project filter if specified
         if args.project:
@@ -210,126 +267,258 @@ For more authentication details: https://cloud.google.com/docs/authentication
                 print(f"[*] Filtered to target project: {args.project} (was {original_count} projects)")
 
         print(f"\n[*] Phase 2: API Capability Assessment")
-        project_apis = discover_apis_for_projects(creds, projects)
-        capabilities, enriched_project_data = assess_enumeration_capabilities(project_apis)
-        
-        if args.verbose:
-            enabled_apis = [k for k, v in capabilities.items() if v]
-            print(f"[*] Enabled capabilities: {', '.join(enabled_apis)}")
+        try:
+            project_apis = discover_apis_for_projects(creds, projects)
+            capabilities, enriched_project_data = assess_enumeration_capabilities(project_apis)
+            
+            if args.verbose:
+                enabled_apis = [k for k, v in capabilities.items() if v]
+                print(f"[*] Enabled capabilities: {', '.join(enabled_apis)}")
+        except Exception as e:
+            handle_api_error(e, "API capability assessment", args)
+            capabilities = {}
 
         # EARLY Admin Status Check with conditional logic
-        admin_status = check_workspace_admin_status(creds)
-        print(f"\n{colorize('[*] Google Workspace Admin Status Check:', TerminalColors.CYAN)}")
-        if admin_status['hasAdminAccess']:
-            print(f"    {colorize('✓ ADMIN ACCESS', TerminalColors.GREEN)}: {admin_status['adminLevel']}")
-            has_admin_sdk_access = True
-        else:
-            error_msg = admin_status.get('error', 'Unknown error')
-            print(f"    {colorize('✗ NO ADMIN ACCESS', TerminalColors.RED)}: {error_msg}")
+        try:
+            admin_status = check_workspace_admin_status(creds)
+            if args.verbose:
+                print(f"\n{colorize('[*] Google Workspace Admin Status Check:', TerminalColors.CYAN)}")
+                if admin_status['hasAdminAccess']:
+                    print(f"    {colorize('✓ ADMIN ACCESS', TerminalColors.GREEN)}: {admin_status['adminLevel']}")
+                    has_admin_sdk_access = True
+                else:
+                    print(f"    {colorize('✗ NO ADMIN ACCESS', TerminalColors.YELLOW)}")
+                    has_admin_sdk_access = False
+            else:
+                has_admin_sdk_access = admin_status['hasAdminAccess']
+        except Exception as e:
+            handle_api_error(e, "Workspace admin check", args)
             has_admin_sdk_access = False
         
         print(f"\n[*] Phase 3: Resource Enumeration")
-        sacs = collect_service_accounts(creds, projects) if capabilities.get("Service Accounts") else []
-        buckets = collect_buckets(creds, projects) if capabilities.get("Storage Buckets") else []  
-        secrets = collect_secrets(creds, projects) if capabilities.get("Secrets") else []
-        instances = collect_compute_instances(creds, projects) if capabilities.get("Compute Instances") else []
-        bigquery_datasets = collect_bigquery_resources(creds, projects) if capabilities.get("BigQuery") else []
-        gke_clusters = collect_gke_clusters(creds, projects) if capabilities.get("GKE Clusters") else []
         
-        # ← NEW: Add IAM collection
-        print(f"\n[*] Phase 3A: IAM Policy Enumeration")
-        iam_data = collect_iam(creds, projects)
-        outbound_permissions = analyze_cross_project_permissions(creds, user, projects)
+        # Resource collection with error handling
+        sacs = []
+        if capabilities.get("Service Accounts"):
+            try:
+                sacs = collect_service_accounts(creds, projects)
+                if args.verbose:
+                    print(f"[+] Found {len(sacs)} service accounts")
+            except Exception as e:
+                handle_api_error(e, "Service account enumeration", args)
         
-        # ← NEW: Add folder collection
-        print(f"\n[*] Phase 3B: Organizational Structure Enumeration")
-        folders, folder_hierarchy = collect_folders(creds, [])  # Pass empty for org auto-discovery
+        buckets = []
+        if capabilities.get("Storage Buckets"):
+            try:
+                buckets = collect_buckets(creds, projects)
+                if args.verbose and buckets:
+                    for bucket in buckets[:3]:  # Show first 3
+                        print(f"    - {bucket.get('name', 'unnamed')} ({bucket.get('location', 'unknown location')})")
+                    if len(buckets) > 3:
+                        print(f"    ... and {len(buckets) - 3} more")
+            except Exception as e:
+                handle_api_error(e, "Storage bucket enumeration", args)
         
+        secrets = []
+        if capabilities.get("Secrets"):
+            try:
+                secrets = collect_secrets(creds, projects)
+            except Exception as e:
+                handle_api_error(e, "Secret enumeration", args)
+        
+        instances = []
+        if capabilities.get("Compute Instances"):
+            try:
+                instances = collect_compute_instances(creds, projects)
+            except Exception as e:
+                handle_api_error(e, "Compute instance enumeration", args)
+        
+        bigquery_datasets = []
+        if capabilities.get("BigQuery"):
+            try:
+                bigquery_datasets = collect_bigquery_resources(creds, projects)
+                if args.verbose and bigquery_datasets:
+                    for ds in bigquery_datasets:
+                        risk = ds.get('riskLevel', 'UNKNOWN')
+                        print(f"    📊 {ds.get('name', 'unnamed')} - {risk} RISK")
+            except Exception as e:
+                handle_api_error(e, "BigQuery enumeration", args)
+        
+        gke_clusters = []
+        if capabilities.get("GKE Clusters"):
+            try:
+                gke_clusters = collect_gke_clusters(creds, projects)
+            except Exception as e:
+                handle_api_error(e, "GKE enumeration", args)
+        
+        # Phase 3A: IAM collection
         if args.verbose:
-            print(f"[*] Found: {len(sacs)} SAs, {len(buckets)} buckets, {len(secrets)} secrets")
-            print(f"[*] Found: {len(instances)} instances, {len(bigquery_datasets)} datasets, {len(gke_clusters)} clusters")
-            print(f"[*] Found IAM data for {len(iam_data)} projects")  # ← NEW
-            print(f"[*] Found outbound control capabilities in {len(outbound_permissions)} projects")  # ← NEW
-            print(f"[*] Found {len(folders)} folders in organizational hierarchy")  # ← NEW
+            print(f"\n[*] Phase 3A: IAM Policy Enumeration")
+        try:
+            iam_data = collect_iam(creds, projects, args)
+            outbound_permissions = analyze_cross_project_permissions(creds, user, projects)
+        except Exception as e:
+            handle_api_error(e, "IAM enumeration", args)
+            iam_data = []
+            outbound_permissions = []
+        
+        # Phase 3B: Folder collection  
+        if args.verbose:
+            print(f"\n[*] Phase 3B: Organizational Structure Enumeration")
+        try:
+            folders, folder_hierarchy = collect_folders(creds, [], args)
+        except Exception as e:
+            handle_api_error(e, "Folder enumeration", args)
+            folders, folder_hierarchy = [], {}
+        
+        # Clean summary for non-verbose mode
+        if not args.verbose:
+            summary_items = []
+            if sacs: summary_items.append(f"{len(sacs)} service accounts")
+            if buckets: summary_items.append(f"{len(buckets)} buckets")
+            if bigquery_datasets: summary_items.append(f"{len(bigquery_datasets)} datasets")
+            if secrets: summary_items.append(f"{len(secrets)} secrets")
+            if instances: summary_items.append(f"{len(instances)} instances")
+            if gke_clusters: summary_items.append(f"{len(gke_clusters)} clusters")
+            
+            if summary_items:
+                print(f"[+] Found: {', '.join(summary_items)}")
+            else:
+                print(f"[!] Limited resource access - enable APIs or use higher privileges")
 
         # CONDITIONAL Users/Groups enumeration
+        users, groups, group_memberships = [], [], []
         if has_admin_sdk_access:
-            users, groups, group_memberships = collect_users(creds, projects)  # ← UPDATED IMPORT
-            if args.verbose:
-                print(f"[*] Found: {len(users)} users, {len(groups)} groups")
+            try:
+                users, groups, group_memberships = collect_users(creds, projects)
+                if args.verbose:
+                    print(f"[*] Found: {len(users)} users, {len(groups)} groups")
+            except Exception as e:
+                handle_api_error(e, "User/group enumeration", args)
         else:
-            print(f"\n{colorize('[*] Skipping Google Workspace user/group enumeration - Admin SDK access not available', TerminalColors.YELLOW)}")
-            users, groups, group_memberships = [], [], []
+            if args.verbose:
+                print(f"\n{colorize('[*] Skipping Google Workspace user/group enumeration - Admin SDK access not available', TerminalColors.YELLOW)}")
 
         # Phase 4A: Service Account Key Analysis
         key_analysis = []
         if sacs:
             print(f"\n[*] Phase 4A: Service Account Key Access Analysis")
-            key_analysis = analyze_service_account_key_access(creds, sacs)
-            if args.verbose:
-                print(f"[*] Analyzed key access for {len(sacs)} service accounts")
+            try:
+                key_analysis = analyze_service_account_key_access(creds, sacs, args)
+                
+                # Count critical findings
+                critical_count = sum(1 for analysis in key_analysis if 'critical' in str(analysis).lower())
+                high_count = sum(1 for analysis in key_analysis if 'high' in str(analysis).lower())
+                
+                if critical_count > 0:
+                    print(f"🚨 Found {critical_count} CRITICAL privilege escalation opportunities")
+                if high_count > 0 and args.verbose:
+                    print(f"⚠️  Found {high_count} HIGH risk privilege paths")
+                    
+                if args.verbose:
+                    print(f"[*] Analyzed key access for {len(sacs)} service accounts")
+            except Exception as e:
+                handle_api_error(e, "Key access analysis", args)
 
         # Phase 4B: Secret Access Privilege Analysis
         secret_access_analysis = []
         if secrets and sacs:
-            print(f"\n[*] Phase 4B: Secret Access Privilege Analysis")
-            secret_access_analysis = analyze_secret_access_privileges(creds, secrets, sacs)
             if args.verbose:
-                print(f"[*] Analyzed secret access for {len(secrets)} secrets")
+                print(f"\n[*] Phase 4B: Secret Access Privilege Analysis")
+            try:
+                secret_access_analysis = analyze_secret_access_privileges(creds, secrets, sacs)
+                if args.verbose:
+                    print(f"[*] Analyzed secret access for {len(secrets)} secrets")
+            except Exception as e:
+                handle_api_error(e, "Secret access analysis", args)
 
         # Phase 4C: Compute Instance Privilege Escalation Analysis
         instance_escalation_analysis = []
         if instances and sacs:
-            print(f"\n[*] Phase 4C: Compute Instance Privilege Escalation Analysis")
-            instance_escalation_analysis = analyze_instance_privilege_escalation(creds, instances, sacs)
             if args.verbose:
-                print(f"[*] Analyzed escalation for {len(instances)} instances")
+                print(f"\n[*] Phase 4C: Compute Instance Privilege Escalation Analysis")
+            try:
+                instance_escalation_analysis = analyze_instance_privilege_escalation(creds, instances, sacs)
+                if args.verbose:
+                    print(f"[*] Analyzed escalation for {len(instances)} instances")
+            except Exception as e:
+                handle_api_error(e, "Instance escalation analysis", args)
 
         # Phase 4D: BigQuery Access Privilege Analysis
         bigquery_access_analysis = []
         if bigquery_datasets and sacs:
-            print(f"\n[*] Phase 4D: BigQuery Access Privilege Analysis")
-            bigquery_access_analysis = analyze_bigquery_access_privileges(creds, bigquery_datasets, sacs)
             if args.verbose:
-                print(f"[*] Analyzed BigQuery access for {len(bigquery_datasets)} datasets")
+                print(f"\n[*] Phase 4D: BigQuery Access Privilege Analysis")
+            try:
+                bigquery_access_analysis = analyze_bigquery_access_privileges(creds, bigquery_datasets, sacs)
+                if args.verbose:
+                    print(f"[*] Analyzed BigQuery access for {len(bigquery_datasets)} datasets")
+            except Exception as e:
+                handle_api_error(e, "BigQuery access analysis", args)
 
         # Phase 4E: GKE Cluster Privilege Escalation Analysis
         gke_escalation_analysis = []
         if gke_clusters and sacs:
-            print(f"\n[*] Phase 4E: GKE Cluster Privilege Escalation Analysis")
-            gke_escalation_analysis = analyze_gke_privilege_escalation(creds, gke_clusters, sacs)
             if args.verbose:
-                print(f"[*] Analyzed GKE escalation for {len(gke_clusters)} clusters")
+                print(f"\n[*] Phase 4E: GKE Cluster Privilege Escalation Analysis")
+            try:
+                gke_escalation_analysis = analyze_gke_privilege_escalation(creds, gke_clusters, sacs)
+                if args.verbose:
+                    print(f"[*] Analyzed GKE escalation for {len(gke_clusters)} clusters")
+            except Exception as e:
+                handle_api_error(e, "GKE escalation analysis", args)
 
         # Phase 4F: Users/Groups Privilege Escalation Analysis
         users_groups_escalation = {}
         if users and sacs:
-            print(f"\n[*] Phase 4F: Users/Groups Privilege Escalation Analysis")
-            users_groups_escalation = analyze_users_groups_privilege_escalation(users, groups, group_memberships, sacs)
             if args.verbose:
-                print(f"[*] Analyzed user/group escalation for {len(users)} users")
+                print(f"\n[*] Phase 4F: Users/Groups Privilege Escalation Analysis")
+            try:
+                users_groups_escalation = analyze_users_groups_privilege_escalation(users, groups, group_memberships, sacs)
+                if args.verbose:
+                    print(f"[*] Analyzed user/group escalation for {len(users)} users")
+            except Exception as e:
+                handle_api_error(e, "User/group escalation analysis", args)
 
         # Phase 4G: Comprehensive Privilege Escalation Analysis
-        print(f"\n[*] Phase 4G: 🚨 {colorize('COMPREHENSIVE PRIVILEGE ESCALATION ANALYSIS', TerminalColors.BOLD + TerminalColors.RED)}")
-        privesc_analyzer = GCPPrivilegeEscalationAnalyzer(creds)
-        escalation_results = privesc_analyzer.analyze_all_privilege_escalation_paths(projects, sacs)
+        if args.verbose:
+            print(f"\n[*] Phase 4G: 🚨 {colorize('COMPREHENSIVE PRIVILEGE ESCALATION ANALYSIS', TerminalColors.BOLD + TerminalColors.RED)}")
+        escalation_results = []
+        try:
+            privesc_analyzer = GCPPrivilegeEscalationAnalyzer(creds)
+            escalation_results = privesc_analyzer.analyze_all_privilege_escalation_paths(projects, sacs)
+            
+            if args.verbose:
+                print(f"[*] Analyzed {len(projects)} projects for privilege escalation")
+        except Exception as e:
+            handle_api_error(e, "Privilege escalation analysis", args)
+            escalation_results = []
         
         # Phase 5: Build ALL edges
-        print(f"\n[*] Phase 5: Building Complete Attack Path Graph")
-        base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets)  # ← UPDATED: Pass iam_data
-        key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
-        secret_access_edges = build_secret_access_edges(secrets, secret_access_analysis, user) if secret_access_analysis else []
-        compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
-        bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
-        gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
-        users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
-        escalation_edges = privesc_analyzer.build_escalation_edges(user)
-        folder_edges = build_folder_edges(folders, folder_hierarchy, projects)  # ← NEW: Add folder edges
-        
-        all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + escalation_edges + folder_edges  # ← UPDATED: Include folder_edges
-        
         if args.verbose:
-            print(f"[*] Built {len(all_edges)} total attack relationships")
+            print(f"\n[*] Phase 5: Building Complete Attack Path Graph")
+        try:
+            base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets)
+            key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
+            secret_access_edges = build_secret_access_edges(secrets, secret_access_analysis, user) if secret_access_analysis else []
+            compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
+            bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
+            gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
+            users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
+            
+            escalation_edges = []
+            if escalation_results and hasattr(privesc_analyzer, 'build_escalation_edges'):
+                escalation_edges = privesc_analyzer.build_escalation_edges(user)
+                
+            folder_edges = build_folder_edges(folders, folder_hierarchy, projects)
+            
+            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + escalation_edges + folder_edges
+            
+            if args.verbose:
+                print(f"[*] Built {len(all_edges)} total attack relationships")
+        except Exception as e:
+            handle_api_error(e, "Attack graph building", args)
+            all_edges = []
 
         # Phase 6: Export comprehensive BloodHound data
         print(f"\n[*] Phase 6: BloodHound Export")
@@ -337,16 +526,33 @@ For more authentication details: https://cloud.google.com/docs/authentication
         # Create output directory
         if not os.path.exists(args.output):
             os.makedirs(args.output)
-            
-        output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data)
+        
+        try:
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data)
+        except Exception as e:
+            handle_api_error(e, "BloodHound export", args)
+            output_file = None
         
         # Final comprehensive summary
-        total_escalation_paths = sum(len(r.get('critical_paths', [])) + len(r.get('high_risk_paths', [])) for r in escalation_results)
-        critical_edges = len([e for e in all_edges if e.get('properties', {}).get('riskLevel') == 'CRITICAL'])
+        total_escalation_paths = sum(len(r.get('critical_paths', [])) + len(r.get('high_risk_paths', [])) for r in escalation_results) if escalation_results else 0
+        critical_edges = len([e for e in all_edges if e.get('properties', {}).get('riskLevel') == 'CRITICAL']) if all_edges else 0
+        
+        # Clean summary with conditional messages
+        unavailable_apis = []
+        if not sacs: unavailable_apis.append("Service Accounts")
+        if not buckets: unavailable_apis.append("Storage Buckets")
+        if not secrets: unavailable_apis.append("Secrets")
+        if not instances: unavailable_apis.append("Compute Instances")
+        if not bigquery_datasets: unavailable_apis.append("BigQuery")
+        if not gke_clusters: unavailable_apis.append("GKE Clusters")
         
         print(f"\n" + "=" * 80)
-        print(f"🎯 {colorize('COMPREHENSIVE GCP ATTACK SURFACE ANALYSIS COMPLETE', TerminalColors.BOLD + TerminalColors.GREEN)}")
+        if unavailable_apis:
+            print(f"🎯 {colorize('GCP ANALYSIS COMPLETE - LIMITED PERMISSIONS DETECTED', TerminalColors.BOLD + TerminalColors.YELLOW)}")
+        else:
+            print(f"🎯 {colorize('COMPREHENSIVE GCP ATTACK SURFACE ANALYSIS COMPLETE', TerminalColors.BOLD + TerminalColors.GREEN)}")
         print(f"=" * 80)
+        
         print(f"📊 {colorize('RESOURCE INVENTORY:', TerminalColors.CYAN)}")
         print(f"    Projects: {len(projects)}")
         print(f"    Service Accounts: {len(sacs)}")
@@ -357,44 +563,45 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"    GKE Clusters: {len(gke_clusters)}")
         print(f"    Users: {len(users)}")
         print(f"    Groups: {len(groups)}")
-        print(f"    IAM Bindings: {sum(len(iam.get('bindings', [])) for iam in iam_data)}")  # ← NEW
-        print(f"    Folders: {len(folders)}")  # ← NEW
-        print()
-        print(f"🔍 {colorize('SECURITY ANALYSIS:', TerminalColors.CYAN)}")
-        print(f"    Service Account Key Analysis: {len(key_analysis)} analyzed")
-        print(f"    Secret Access Analysis: {len(secret_access_analysis)} secrets analyzed")
-        print(f"    Instance Escalation Analysis: {len(instance_escalation_analysis)} instances analyzed")
-        print(f"    BigQuery Access Analysis: {len(bigquery_access_analysis)} datasets analyzed")
-        print(f"    GKE Escalation Analysis: {len(gke_escalation_analysis)} clusters analyzed")
-        print(f"    Users/Groups Escalation Analysis: {len(users)} users, {len(groups)} groups analyzed")
-        print(f"    IAM Policy Analysis: {len(iam_data)} projects analyzed")  # ← NEW
-        print(f"    Outbound Control Analysis: {len(outbound_permissions)} projects with permissions")  # ← NEW
-        print(f"    Organizational Structure Analysis: {len(folders)} folders analyzed")  # ← NEW
-        if total_escalation_paths > 0:
-            print(f"    {colorize(f'Privilege Escalation Paths: {total_escalation_paths}', TerminalColors.YELLOW)}")
+        if args.verbose:
+            print(f"    IAM Bindings: {sum(len(iam.get('bindings', [])) for iam in iam_data)}")
+            print(f"    Folders: {len(folders)}")
+        
+        if unavailable_apis and not args.quiet:
+            print()
+            print(f"⚠️  {colorize('UNAVAILABLE APIS:', TerminalColors.YELLOW)}")
+            print(f"    {', '.join(unavailable_apis[:3])}")  # Show only first 3
+            if args.verbose:
+                print(f"    Enable APIs or use higher-privilege account for comprehensive analysis")
+        
         print()
         print(f"🔗 {colorize('ATTACK GRAPH:', TerminalColors.CYAN)}")
-        print(f"    Base Relationship Edges: {len(base_edges)}")
-        print(f"    Key Access Edges: {len(key_access_edges)}")
-        print(f"    Secret Access Edges: {len(secret_access_edges)}")
-        print(f"    Compute Instance Edges: {len(compute_edges)}")
-        print(f"    BigQuery Access Edges: {len(bigquery_edges)}")
-        print(f"    GKE Cluster Edges: {len(gke_edges)}")
-        print(f"    Users/Groups Edges: {len(users_groups_edges)}")
-        print(f"    Advanced Escalation Edges: {len(escalation_edges)}")
-        print(f"    Folder Relationship Edges: {len(folder_edges)}")  # ← NEW
         print(f"    {colorize(f'Total BloodHound Attack Edges: {len(all_edges)}', TerminalColors.BOLD)}")
         if critical_edges > 0:
             print(f"    {colorize(f'🚨 CRITICAL Attack Paths: {critical_edges}', TerminalColors.RED + TerminalColors.BOLD)}")
+        
         print()
         print(f"📁 {colorize('OUTPUT:', TerminalColors.CYAN)}")
-        print(f"    BloodHound JSON: {output_file}")
-        print(f"    Custom GCP Icons: {'Registered' if not args.no_icons else 'Skipped'}")
+        if output_file:
+            print(f"    BloodHound JSON: {output_file}")
+            if not args.no_icons:
+                print(f"    Custom GCP Icons: {'Registered' if get_bloodhound_token() else 'Skipped (no token)'}")
+        else:
+            print(f"    BloodHound export: Failed")
+        
         print()
         print(f"💡 {colorize('NEXT STEPS:', TerminalColors.CYAN)}")
-        print(f"    1. Upload {output_file} to BloodHound")
-        print(f"    2. Run queries to visualize attack paths")
-        print(f"    3. Focus on CRITICAL risk findings first")
+        if output_file:
+            print(f"    1. Upload {output_file} to BloodHound")
+            print(f"    2. Run queries to visualize attack paths")
+            if critical_edges > 0:
+                print(f"    3. Focus on CRITICAL risk findings first")
+        else:
+            print(f"    1. Check permissions and re-run with -d flag")
+            print(f"    2. Enable required GCP APIs")
+        
+        if unavailable_apis and args.verbose:
+            print(f"    • Enable missing APIs: {', '.join(unavailable_apis)}")
         print("=" * 80)
 
     except KeyboardInterrupt:
