@@ -97,3 +97,31 @@ echo "💡 Get your token from BloodHound UI → Browser Dev Tools → Network �
         print("[DEBUG] 💡 Run ./register_icons.sh to register icons manually")
         
         return True
+
+# NEW: Import and add search functionality
+from .gcp_search_extension import register_gcp_search_nodes
+
+def register_gcp_icons_and_search(bloodhound_url="http://localhost:8080", token=None):
+    """Register both GCP icons and search nodes automatically"""
+    
+    # Register icons (your existing logic)
+    registry = BloodHoundIconRegistry(bloodhound_url)
+    registry.auto_register()
+    
+    # Add search node registration
+    if token:
+        try:
+            if register_gcp_search_nodes(bloodhound_url, token):
+                print("[DEBUG] ✅ GCP search nodes registered - UI search enabled!")
+            else:
+                print("[DEBUG] ⚠️ Search registration failed - Cypher queries still work")
+        except Exception as e:
+            print(f"[DEBUG] ⚠️ Search extension error: {e}")
+    else:
+        print("[DEBUG] ℹ️ No token provided - skipping search registration")
+
+# For backward compatibility - keep your existing function
+def register_gcp_icons():
+    """Your existing icon registration function - unchanged"""
+    registry = BloodHoundIconRegistry()
+    return registry.auto_register()
