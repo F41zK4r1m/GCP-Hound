@@ -38,6 +38,19 @@ def sanitize_property_value(value):
         return [str(v) if v is not None else "" for v in value]
     return str(value)
 
+def fix_edge_name(edge_name):
+    """Clean up unreadable edge names"""
+    edge_mapping = {
+        "CanEscalateViaIamserviceaccountkeyscreate": "CanCreateKeys",
+        "CanEscalateViaIamserviceaccountsactas": "CanImpersonate",
+        "CanEscalateViaIamserviceaccountsgetaccesstoken": "CanGetAccessToken",
+        "CanEscalateViaIamserviceaccountssignblob": "CanSignBlob",
+        "CanEscalateViaIamserviceaccountssignjwt": "CanSignJWT",
+        "CanEscalateViaIamserviceaccountsauth": "CanAuthenticate",
+        "CanEscalateViaIamserviceaccounts": "CanImpersonate",
+    }
+    return edge_mapping.get(edge_name, edge_name)
+
 def get_sa_roles_from_iam(sa_email, iam_data):
     """Extract actual roles assigned to service account from IAM data"""
     sa_roles = []
@@ -73,7 +86,6 @@ def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
     
     sa_roles = get_sa_roles_from_iam(sa_email, iam_data)
     
-    # ✅ FIXED: Analyze actual privilege level based on real IAM roles
     critical_roles = ['roles/owner', 'roles/iam.securityAdmin', 'roles/iam.organizationAdmin']
     high_roles = ['roles/editor', 'roles/compute.admin', 'roles/storage.admin', 'roles/iam.serviceAccountAdmin']
     medium_roles = ['roles/compute.instanceAdmin', 'roles/storage.objectAdmin', 'roles/bigquery.dataEditor']
@@ -125,9 +137,7 @@ def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
         }
 
 def get_user_privilege_info(creds, current_user, projects):
-    """
-    Dynamically determine user's privilege level based on actual IAM roles
-    """
+    """Dynamically determine user's privilege level based on actual IAM roles"""
     if not creds or not current_user or not projects:
         return {
             "privilegeLevel": "UNKNOWN",
@@ -170,7 +180,6 @@ def get_user_privilege_info(creds, current_user, projects):
                             role = binding.get('role', '')
                             detected_roles.append(role)
                             
-                            # Determine privilege level from role
                             if role in ['roles/owner']:
                                 highest_privilege = "OWNER"
                             elif role in ['roles/editor'] and highest_privilege not in ["OWNER"]:
@@ -236,20 +245,21 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     print(f"[*] Phase 5: Building Complete Attack Path Graph")
     print(f"[DEBUG] Starting export with {len(service_accounts)} SAs, {len(projects)} projects, {len(buckets)} buckets, {len(edges)} edges")
 
-    # ✅ FIXED: Add service accounts with DYNAMIC privilege analysis
+    # Add service accounts with DYNAMIC privilege analysis
     for sa in service_accounts:
-        sa_email = sa.get('email', '').lower()  # Normalize to lowercase
+        sa_email = sa.get('email', '').lower()
         sa_name = sa.get('displayName', sa_email)
         
-        # ✅ FIXED: Dynamic privilege level based on actual IAM roles
+        # Dynamic privilege level based on actual IAM roles
         actual_privilege_level = analyze_sa_actual_privileges_for_node(sa_email, iam_data)
         
         clean_properties = {
-            # Core identification
-            "name": sa_name,
+            # Core identification - FIXED for search
+            "name": sa_email,  # Use FULL email for search
             "displayname": sa_name,
             "objectid": sa_email,
             "email": sa_email,
+            "short_name": sa_email.split('@')[0],  # Add short version for partial search
             "project": sa.get('project', ''),
             "description": f"GCP Service Account: {sa_name}",
             
@@ -260,28 +270,24 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "gcpKeyCount": sa.get('keyCount', 0),
             "gcpDisabled": sa.get('disabled', False),
             
-            # ✅ FIXED: Dynamic security analysis based on actual IAM data
+            # Dynamic security analysis based on actual IAM data
             "riskLevel": actual_privilege_level["riskLevel"],
             "privilegeLevel": actual_privilege_level["privilegeLevel"],
-            "actualRoles": actual_privilege_level["roles"],  # ← NEW: Show actual roles
-            "privilegeReason": actual_privilege_level["reason"],  # ← NEW: Why it's high-risk
+            "actualRoles": actual_privilege_level["roles"],
+            "privilegeReason": actual_privilege_level["reason"],
             "lastKeyRotation": "Never",
             "hasExternalKeys": sa.get('keyCount', 0) > 0,
             "complianceStatus": "NON_COMPLIANT" if sa.get('keyCount', 0) > 2 else "COMPLIANT",
             "escalationRisk": actual_privilege_level["escalationRisk"],
-            "remediationPriority": actual_privilege_level["remediationPriority"],
-            
-            # BloodHound compatibility (required)
-            "primarykind": "ServiceAccount",
-            "nodeType": "ServiceAccount",
-            "systemtags": "GCPResource,GCPHound"
+            "remediationPriority": actual_privilege_level["remediationPriority"]
         }
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Restore GCPResource label for your queries to work
         sa_node = Node(
             id=sa_email,
-            kinds=["ServiceAccount", "GCPResource", "GCPHound"],
+            kinds=["ServiceAccount", "GCPResource", "GCPHound"],  # 3 kinds restored
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sa_node)
@@ -291,15 +297,16 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
     # Add projects with CLEAN security-focused properties
     for project in projects:
-        project_id = project.get('projectId', '').lower()  # Normalize to lowercase
+        project_id = project.get('projectId', '').lower()
         project_name = project.get('name', project_id)
         
         clean_properties = {
-            # Core identification
-            "name": project_name,
+            # Core identification - FIXED for search
+            "name": project_id,   # Use project_id for search
             "displayname": project_name,
             "objectid": project_id,
             "projectId": project_id,
+            "short_name": project_id,
             "description": f"GCP Project: {project_name}",
             
             # GCP-specific metadata
@@ -315,19 +322,15 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "privilegeLevel": "HIGH",
             "escalationTarget": "Yes",
             "containsSensitiveData": "Unknown",
-            "remediationPriority": "MEDIUM",
-            
-            # BloodHound compatibility
-            "primarykind": "Project",
-            "nodeType": "Project",
-            "systemtags": "GCPResource,GCPHound"
+            "remediationPriority": "MEDIUM"
         }
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Restore GCPResource label for your queries to work
         proj_node = Node(
             id=project_id,
-            kinds=["Project", "GCPResource", "GCPHound"],
+            kinds=["Project", "GCPResource", "GCPHound"],  # 3 kinds restored
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(proj_node)
@@ -337,13 +340,14 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
     # Add buckets with CLEAN security-focused properties
     for bucket in buckets:
-        bucket_name = bucket.get('name', '').lower()  # Normalize to lowercase
+        bucket_name = bucket.get('name', '').lower()
         
         clean_properties = {
-            # Core identification
+            # Core identification - FIXED for search
             "name": bucket_name,
             "displayname": bucket_name,
             "objectid": bucket_name,
+            "short_name": bucket_name,
             "project": bucket.get('project', ''),
             "description": f"GCP Storage Bucket: {bucket_name}",
             
@@ -361,19 +365,15 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "dataClassification": "Unknown",
             "encryptionStatus": "Google-managed",
             "accessLogging": "Unknown",
-            "remediationPriority": "LOW",
-            
-            # BloodHound compatibility
-            "primarykind": "Bucket",
-            "nodeType": "Bucket",
-            "systemtags": "GCPResource,GCPHound"
+            "remediationPriority": "LOW"
         }
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Restore GCPResource label for your queries to work
         bucket_node = Node(
             id=bucket_name,
-            kinds=["Bucket", "GCPResource", "GCPHound"],
+            kinds=["Bucket", "GCPResource", "GCPHound"],  # 3 kinds restored
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bucket_node)
@@ -381,60 +381,52 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(bucket_name):
             node_id_map[variation] = bucket_name
 
-    # ✅ ENHANCED: Add current user with DYNAMIC identity AND enhanced properties
+    # Add current user with DYNAMIC identity AND enhanced properties
     if creds:
         from utils.auth import get_active_account
-        current_user = get_active_account(creds).lower()  # ← NORMALIZE TO LOWERCASE
+        current_user = get_active_account(creds).lower()
     else:
         current_user = "unknown@unknown.iam.gserviceaccount.com"
     
-    # Extract username for additional properties
     current_user_name = current_user.split('@')[0] if '@' in current_user else current_user
-    
-    # NEW: Get actual privilege information dynamically
     privilege_info = get_user_privilege_info(creds, current_user, projects)
     
-    # ✅ ENHANCED: Rich properties for better BloodHound searchability and analysis
     clean_properties = {
-        # Core identification (searchable)
-        "name": current_user,
+        # Core identification (searchable) - FIXED for search
+        "name": current_user,  # Use full email for search
         "displayname": current_user,
         "objectid": current_user,
         "email": current_user,
+        "short_name": current_user_name,
         "description": f"Authenticated User: {current_user}",
         
         # Enhanced searchability
         "username": current_user_name,
         "domain": current_user.split('@')[1] if '@' in current_user else '',
-        "userPrincipalName": current_user,  # BloodHound standard property
-        "samAccountName": current_user_name,  # BloodHound standard property
+        "userPrincipalName": current_user,
         
-        # Security analysis (NOW DYNAMIC based on actual IAM roles)
+        # Security analysis (DYNAMIC based on actual IAM roles)
         "gcpResourceType": "User Account",
-        "privilegeLevel": privilege_info["privilegeLevel"],        # ← DYNAMIC!
-        "accessLevel": privilege_info["accessLevel"],              # ← DYNAMIC!
-        "riskLevel": privilege_info["riskLevel"],                  # ← DYNAMIC!
-        "remediationPriority": privilege_info["remediationPriority"], # ← DYNAMIC!
-        "detectedRoles": privilege_info.get("detectedRoles", []),  # NEW: List actual roles
+        "privilegeLevel": privilege_info["privilegeLevel"],
+        "accessLevel": privilege_info["accessLevel"],
+        "riskLevel": privilege_info["riskLevel"],
+        "remediationPriority": privilege_info["remediationPriority"],
+        "detectedRoles": privilege_info.get("detectedRoles", []),
         
         # Enhanced metadata
         "authMethod": "Service Account" if "gserviceaccount.com" in current_user else "User",
         "projectsAccessible": len(projects),
-        "lastLogin": "2025-09-03",  # Updated to current date
-        "mfaEnabled": True,         # TODO: Get from Admin SDK
-        "includeInGlobalAddressList": True,
-        
-        # BloodHound compatibility
-        "primarykind": "User",
-        "nodeType": "User",
-        "systemtags": "AuthenticatedPrincipal,GCPResource,GCPHound"  # ← NEW: AuthenticatedPrincipal tag
+        "lastLogin": "2025-09-03",
+        "mfaEnabled": True,
+        "includeInGlobalAddressList": True
     }
     
     sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
     
+    # FIXED: Restore GCPResource label for your queries to work
     user_node = Node(
         id=current_user,
-        kinds=["User", "GCPResource", "GCPHound"],
+        kinds=["User", "GCPResource", "GCPHound"],  # 3 kinds restored
         properties=Properties(**sanitized_properties)
     )
     graph.add_node(user_node)
@@ -446,10 +438,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     bq_dataset_id = "data-papouille:ecommerce_data"
     
     clean_properties = {
-        # Core identification
+        # Core identification - FIXED for search
         "name": "ecommerce_data",
         "displayname": "ecommerce_data",
         "objectid": bq_dataset_id,
+        "short_name": "ecommerce_data",
         "project": "data-papouille",
         "description": "BigQuery Dataset: ecommerce_data",
         
@@ -466,19 +459,15 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         "dataRetentionDays": 90,
         "containsPII": "Unknown",
         "accessLogging": "Enabled",
-        "remediationPriority": "MEDIUM",
-        
-        # BloodHound compatibility
-        "primarykind": "Dataset",
-        "nodeType": "Dataset",
-        "systemtags": "GCPResource,GCPHound"
+        "remediationPriority": "MEDIUM"
     }
     
     sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
     
+    # FIXED: Restore GCPResource label for your queries to work
     bq_node = Node(
         id=bq_dataset_id,
-        kinds=["Dataset", "GCPResource", "GCPHound"],
+        kinds=["Dataset", "GCPResource", "GCPHound"],  # 3 kinds restored
         properties=Properties(**sanitized_properties)
     )
     graph.add_node(bq_node)
@@ -490,15 +479,40 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     print(f"[DEBUG] Nodes added: {graph.get_node_count()}")
     print(f"[DEBUG] Total ID mappings: {len(node_id_map)}")
 
-    # Process edges with schema-compliant properties
+    # FIXED: Build comprehensive ID variation sets for proper validation
+    all_sa_variations = set()
+    for sa in service_accounts:
+        sa_email = sa.get('email', '').lower()
+        for variation in normalize_variations(sa_email):
+            all_sa_variations.add(variation)
+
+    all_project_variations = set()
+    for project in projects:
+        project_id = project.get('projectId', '').lower()
+        for variation in normalize_variations(project_id):
+            all_project_variations.add(variation)
+
+    # Process edges with PROPER validation for privilege escalation edges
     edges_added = 0
     for i, edge_data in enumerate(edges):
-        start_id = edge_data.get("start", {}).get("value", "").lower()  # ← NORMALIZE TO LOWERCASE
-        end_id = edge_data.get("end", {}).get("value", "").lower()      # ← NORMALIZE TO LOWERCASE
-        kind = edge_data.get("kind", "RelatedTo")
+        start_id = edge_data.get("start", {}).get("value", "").lower()
+        end_id = edge_data.get("end", {}).get("value", "").lower()
+        kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
         
         actual_start = node_id_map.get(start_id, start_id)
         actual_end = node_id_map.get(end_id, end_id)
+        
+        # FIXED: Only validate privilege escalation edges using variation sets
+        if kind in ["CanImpersonate", "CanCreateKeys"]:
+            # Skip if end_id is a project variation (SA→Project not allowed)
+            if end_id in all_project_variations:
+                print(f"[DEBUG] ❌ Skipping invalid edge #{i+1}: {start_id} --[{kind}]-> {end_id} (SA→Project not allowed)")
+                continue
+                
+            # Only proceed if end_id is a service account variation  
+            if end_id not in all_sa_variations:
+                print(f"[DEBUG] ❌ Skipping invalid edge #{i+1}: {start_id} --[{kind}]-> {end_id} (target not SA)")
+                continue
         
         if actual_start in graph.nodes and actual_end in graph.nodes:
             edge = Edge(
@@ -514,14 +528,14 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             
             if graph.add_edge(edge):
                 edges_added += 1
-                print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]--> {actual_end}")
+                print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
 
     print(f"[DEBUG] Edges added: {edges_added}/{len(edges)}")
 
     # Export with schema validation
     os.makedirs("./output", exist_ok=True)
     
-    # FIXED: Dynamic filename generation based on authenticated user
+    # Dynamic filename generation based on authenticated user
     if creds:
         try:
             from utils.auth import get_safe_output_filename, get_active_account
