@@ -20,11 +20,40 @@
 
 > Example graphs:
 
-<img width="1905" height="863" alt="image" src="https://github.com/user-attachments/assets/ecc54d6a-524a-4668-8163-1c716a0ee9bb" />
+```
+# GCP Resource relationship
+
+MATCH (n:GCPResource)-[r]->(m) 
+RETURN n, r, m LIMIT 50
+```
+
+<img width="1839" height="752" alt="image" src="https://github.com/user-attachments/assets/8c062b89-decc-47f7-aaf3-46e77dbfd175" />
+
+```
+# Key creation attack path
+
+MATCH (n)-[r:CanCreateKeys]->(m) 
+RETURN n, r, m
+```
 
 <img width="1887" height="953" alt="image" src="https://github.com/user-attachments/assets/b1cab70b-9bda-47bb-af2b-e5c1625a09a7" />
 
+```
+# show complete attack surface
+
+MATCH (n)-[r]->(m) 
+RETURN n, r, m LIMIT 100
+```
+
 <img width="1923" height="778" alt="image" src="https://github.com/user-attachments/assets/fa8c187a-b171-48f4-b2d9-d77292c76136" />
+
+```
+# show high-risk relations
+
+MATCH (n)-[r]->(m) 
+WHERE r.riskLevel IN ["HIGH", "CRITICAL"] 
+RETURN n, r, m
+```
 
 <img width="1436" height="811" alt="image" src="https://github.com/user-attachments/assets/fddd41e3-4125-4869-b8d2-f475751f0cb4" />
 
