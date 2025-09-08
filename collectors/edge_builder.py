@@ -102,7 +102,7 @@ def build_service_account_edges(service_accounts, projects, iam_data=None):
         
         if not sa_email or not project_id:
             continue
-            
+        
         # Basic containment edge
         edge = {
             "start": {"value": project_id},
@@ -128,7 +128,7 @@ def build_service_account_edges(service_accounts, projects, iam_data=None):
                 "end": {"value": project_id},
                 "kind": "HighPrivilegeServiceAccount",
                 "properties": {
-                    "source": "iam_privilege_analysis",  # ← Now based on IAM, not naming
+                    "source": "iam_privilege_analysis", # ← Now based on IAM, not naming
                     "riskLevel": actual_privilege_level,
                     "actualRoles": get_sa_roles_from_iam(sa_email, iam_data),
                     "privilegeReason": get_privilege_reason(sa_email, iam_data),
@@ -247,13 +247,13 @@ def get_attack_vector_for_permission(permission):
 def get_mitre_technique_for_permission(permission):
     """Map GCP permissions to MITRE ATT&CK techniques"""
     mitre_mapping = {
-        'iam.serviceAccounts.actAs': 'T1078.004',  # Valid Accounts: Cloud Accounts
-        'iam.serviceAccountKeys.create': 'T1098.001',  # Account Manipulation: Additional Cloud Credentials
-        'compute.instances.create': 'T1578.002',  # Modify Cloud Compute Infrastructure: Create Cloud Instance
-        'cloudfunctions.functions.create': 'T1578.001',  # Modify Cloud Compute Infrastructure: Create Snapshot
-        'storage.objects.delete': 'T1485',  # Data Destruction
-        'bigquery.tables.getData': 'T1530',  # Data from Cloud Storage Object
-        'secretmanager.versions.access': 'T1555.006'  # Credentials from Password Stores: Cloud Secrets Management Stores
+        'iam.serviceAccounts.actAs': 'T1078.004', # Valid Accounts: Cloud Accounts
+        'iam.serviceAccountKeys.create': 'T1098.001', # Account Manipulation: Additional Cloud Credentials
+        'compute.instances.create': 'T1578.002', # Modify Cloud Compute Infrastructure: Create Cloud Instance
+        'cloudfunctions.functions.create': 'T1578.001', # Modify Cloud Compute Infrastructure: Create Snapshot
+        'storage.objects.delete': 'T1485', # Data Destruction
+        'bigquery.tables.getData': 'T1530', # Data from Cloud Storage Object
+        'secretmanager.versions.access': 'T1555.006' # Credentials from Password Stores: Cloud Secrets Management Stores
     }
     return mitre_mapping.get(permission, '')
 
@@ -281,7 +281,7 @@ def build_iam_binding_edges(iam_data, projects):
                     member_id = member.replace('group:', '').lower()
                     member_type = 'Group'
                 else:
-                    continue  # Skip unknown member types
+                    continue # Skip unknown member types
                 
                 # ✅ ENHANCED: More descriptive edge types based on role
                 edge_kind = determine_enhanced_edge_kind_from_role(role)
@@ -407,7 +407,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts)
                 "properties": {
                     "source": "resource_ownership",
                     "resourceType": "Secret",
-                    "riskLevel": "HIGH",  # Secrets are always high risk
+                    "riskLevel": "HIGH", # Secrets are always high risk
                     "encryptionStatus": "Google-managed",
                     "description": f"Project {project_id} owns secret {secret_name}"
                 }
@@ -418,15 +418,29 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts)
     return edges
 
 def build_privilege_escalation_edges(iam_data, service_accounts):
-    """Build enhanced privilege escalation opportunity edges"""
+    """COMPLETELY FIXED: Build privilege escalation edges with correct SA→SA targets"""
     edges = []
     
-    # ✅ ENHANCED: More comprehensive escalation permission mapping
-    escalation_permissions = {
+    # Map service accounts by project for target resolution
+    sa_by_project = {}
+    for sa in service_accounts:
+        project_id = sa.get('project', '').lower()
+        sa_email = sa.get('email', '').lower()
+        if project_id and sa_email:
+            if project_id not in sa_by_project:
+                sa_by_project[project_id] = []
+            sa_by_project[project_id].append(sa_email)
+    
+    # ✅ FIXED: Explicit categorization of permissions
+    sa_to_sa_permissions = {
         'iam.serviceAccounts.actAs': 'CanImpersonate',
-        'iam.serviceAccounts.getAccessToken': 'CanGenerateAccessToken', 
+        'iam.serviceAccounts.getAccessToken': 'CanGenerateAccessToken',
         'iam.serviceAccountKeys.create': 'CanCreateKeys',
         'iam.serviceAccountKeys.get': 'CanReadKeys',
+        'iam.serviceAccountKeys.list': 'CanListKeys',
+    }
+    
+    sa_to_project_permissions = {
         'compute.instances.create': 'CanCreateComputeInstance',
         'compute.instances.setServiceAccount': 'CanChangeInstanceServiceAccount',
         'cloudfunctions.functions.create': 'CanCreateCloudFunction',
@@ -444,23 +458,49 @@ def build_privilege_escalation_edges(iam_data, service_accounts):
             role = binding.get('role', '')
             members = binding.get('members', [])
             
-            # ✅ ENHANCED: Get permissions for role with better mapping
+            # Get permissions for role
             escalation_perms = get_enhanced_permissions_for_role(role)
-            found_escalation_perms = [p for p in escalation_perms if p in escalation_permissions]
             
-            if found_escalation_perms:
-                for member in members:
-                    member_id = clean_member_id(member)
-                    if not member_id:
-                        continue
+            for member in members:
+                member_id = clean_member_id(member)
+                if not member_id:
+                    continue
+                
+                for perm in escalation_perms:
+                    # ✅ FIXED: Create SA→SA edges for service account permissions
+                    if perm in sa_to_sa_permissions:
+                        edge_kind = sa_to_sa_permissions[perm]
+                        risk_level = get_escalation_risk_level(perm)
                         
-                    for perm in found_escalation_perms:
-                        edge_kind = escalation_permissions[perm]
+                        # Create individual edges to each target SA in the project
+                        target_sas = sa_by_project.get(project_id, [])
+                        for target_sa in target_sas:
+                            if target_sa != member_id:  # Don't create self-referencing edges
+                                edge = {
+                                    "start": {"value": member_id},
+                                    "end": {"value": target_sa},  # ← ALWAYS TARGET SA
+                                    "kind": edge_kind,
+                                    "properties": {
+                                        "source": "privilege_escalation_analysis",
+                                        "permission": perm,
+                                        "role": role,
+                                        "riskLevel": risk_level,
+                                        "projectContext": project_id,
+                                        "mitreTechnique": get_mitre_technique_for_permission(perm),
+                                        "attackVector": get_attack_vector_for_permission(perm),
+                                        "description": f"{member_id} can {perm.replace('.', ' ')} on service account {target_sa}"
+                                    }
+                                }
+                                edges.append(edge)
+                    
+                    # ✅ FIXED: Create SA→Project edges ONLY for project-level permissions
+                    elif perm in sa_to_project_permissions:
+                        edge_kind = sa_to_project_permissions[perm]
                         risk_level = get_escalation_risk_level(perm)
                         
                         edge = {
                             "start": {"value": member_id},
-                            "end": {"value": project_id},
+                            "end": {"value": project_id},  # ← Only for project-level permissions
                             "kind": edge_kind,
                             "properties": {
                                 "source": "privilege_escalation_analysis",
@@ -474,7 +514,7 @@ def build_privilege_escalation_edges(iam_data, service_accounts):
                         }
                         edges.append(edge)
     
-    print(f"[+] Built {len(edges)} enhanced privilege escalation edges")
+    print(f"[+] Built {len(edges)} CORRECTLY FIXED privilege escalation edges")
     return edges
 
 def get_enhanced_permissions_for_role(role):
