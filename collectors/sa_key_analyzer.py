@@ -17,14 +17,15 @@ def colorize(text, color):
     """Add color to text for terminal output"""
     return f"{color}{text}{TerminalColors.RESET}"
 
-def analyze_service_account_key_access(creds, service_accounts):
+def analyze_service_account_key_access(creds, service_accounts, args=None):
     """
     Analyze service account key access capabilities - critical for privilege escalation analysis.
     Tests: list keys, create keys, and impersonation permissions for each service account.
     """
     key_access_analysis = []
     
-    print(f"\n{colorize('[*] ANALYZING SERVICE ACCOUNT KEY ACCESS FOR PRIVILEGE ESCALATION...', TerminalColors.CYAN)}")
+    if args and args.verbose:
+        print(f"\n{colorize('[*] ANALYZING SERVICE ACCOUNT KEY ACCESS FOR PRIVILEGE ESCALATION...', TerminalColors.CYAN)}")
     
     for sa in service_accounts:
         sa_email = sa.get('email')
@@ -59,13 +60,21 @@ def analyze_service_account_key_access(creds, service_accounts):
                 
                 analysis_result['canListKeys'] = True
                 analysis_result['existingKeys'] = existing_keys
-                print(f"    {colorize('✓', TerminalColors.GREEN)} {sa_name}: Can list {colorize(str(len(existing_keys)), TerminalColors.WHITE)} existing keys")
+                if args and args.verbose:
+                    print(f"    {colorize('✓', TerminalColors.GREEN)} {sa_name}: Can list {colorize(str(len(existing_keys)), TerminalColors.WHITE)} existing keys")
                 
             except HttpError as e:
-                if e.resp.status == 403:
-                    print(f"    {colorize('✗', TerminalColors.RED)} {sa_name}: Cannot list keys (403 Forbidden)")
+                if args and args.debug:
+                    print(f"[DEBUG] Key listing failed for {sa_name}: {e}")
+                elif "Unable to find the server" in str(e):
+                    if args and args.verbose:
+                        print(f"    ! {sa_name}: Network error during key listing (use -d for details)")
+                elif e.resp.status == 403:
+                    if args and args.verbose:
+                        print(f"    {colorize('✗', TerminalColors.RED)} {sa_name}: Cannot list keys (403 Forbidden)")
                 else:
-                    print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Error listing keys: {e}")
+                    if args and args.verbose:
+                        print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Error listing keys")
             
             # Test 2: Check if we can create new keys (test permissions without actually creating)
             try:
@@ -86,20 +95,29 @@ def analyze_service_account_key_access(creds, service_accounts):
                 if 'iam.serviceAccountKeys.create' in granted_permissions:
                     analysis_result['canCreateKeys'] = True
                     analysis_result['riskLevel'] = 'CRITICAL'
-                    print(f"    {colorize('🚨 CRITICAL', TerminalColors.RED + TerminalColors.BOLD)} {sa_name}: Can create keys - {colorize('PRIVILEGE ESCALATION POSSIBLE', TerminalColors.RED)}")
+                    if args and args.verbose:
+                        print(f"    {colorize('🚨 CRITICAL', TerminalColors.RED + TerminalColors.BOLD)} {sa_name}: Can create keys - {colorize('PRIVILEGE ESCALATION POSSIBLE', TerminalColors.RED)}")
                 
                 if 'iam.serviceAccounts.actAs' in granted_permissions:
                     analysis_result['canImpersonate'] = True
                     analysis_result['impersonationRoles'].append('serviceAccountUser')
-                    print(f"    {colorize('⚠ HIGH', TerminalColors.YELLOW)} {sa_name}: Can impersonate service account")
+                    if args and args.verbose:
+                        print(f"    {colorize('⚠ HIGH', TerminalColors.YELLOW)} {sa_name}: Can impersonate service account")
                 
                 if 'iam.serviceAccounts.getAccessToken' in granted_permissions:
                     analysis_result['impersonationRoles'].append('serviceAccountTokenCreator')
-                    print(f"    {colorize('⚠ HIGH', TerminalColors.YELLOW)} {sa_name}: Can generate access tokens")
+                    if args and args.verbose:
+                        print(f"    {colorize('⚠ HIGH', TerminalColors.YELLOW)} {sa_name}: Can generate access tokens")
                 
             except HttpError as e:
-                if e.resp.status != 403:  # 403 is expected for no permissions
-                    print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Error testing permissions: {e}")
+                if args and args.debug:
+                    print(f"[DEBUG] Key creation test failed for {sa_name}: {e}")
+                elif "Unable to find the server" in str(e):
+                    if args and args.verbose:
+                        print(f"    ! {sa_name}: Network error during key creation test (use -d for details)")
+                elif e.resp.status != 403:  # 403 is expected for no permissions
+                    if args and args.verbose:
+                        print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Error testing permissions")
             
             # Risk assessment
             if analysis_result['canCreateKeys']:
@@ -110,7 +128,14 @@ def analyze_service_account_key_access(creds, service_accounts):
                 analysis_result['riskLevel'] = 'MEDIUM'
                 
         except Exception as e:
-            print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Unexpected error: {e}")
+            if args and args.debug:
+                print(f"[DEBUG] Unexpected error analyzing {sa_name}: {e}")
+            elif "Unable to find the server" in str(e):
+                if args and args.verbose:
+                    print(f"    ! {sa_name}: Network error (use -d for details)")
+            else:
+                if args and args.verbose:
+                    print(f"    {colorize('!', TerminalColors.YELLOW)} {sa_name}: Analysis error (use -d for details)")
         
         key_access_analysis.append(analysis_result)
     
@@ -119,15 +144,16 @@ def analyze_service_account_key_access(creds, service_accounts):
     impersonation_paths = [r for r in key_access_analysis if r['canImpersonate']]
     key_access_paths = [r for r in key_access_analysis if r['canListKeys']]
     
-    print(f"\n{colorize('[+] SERVICE ACCOUNT KEY ACCESS ANALYSIS SUMMARY:', TerminalColors.CYAN + TerminalColors.BOLD)}")
-    print(f"    {colorize('🚨 CRITICAL Escalations (can create keys):', TerminalColors.RED)} {colorize(str(len(critical_escalations)), TerminalColors.WHITE)}")
-    print(f"    {colorize('⚠ Impersonation Paths:', TerminalColors.YELLOW)} {colorize(str(len(impersonation_paths)), TerminalColors.WHITE)}")
-    print(f"    {colorize('📋 Key Listing Access:', TerminalColors.BLUE)} {colorize(str(len(key_access_paths)), TerminalColors.WHITE)}")
-    
-    if critical_escalations:
-        print(f"    \n    {colorize('⚡ IMMEDIATE PRIVILEGE ESCALATION OPPORTUNITIES:', TerminalColors.RED + TerminalColors.BOLD)}")
-        for crit in critical_escalations:
-            print(f"       {colorize('•', TerminalColors.RED)} {colorize(crit['displayName'], TerminalColors.WHITE)} ({colorize(crit['serviceAccount'], TerminalColors.CYAN)})")
+    if args and args.verbose:
+        print(f"\n{colorize('[+] SERVICE ACCOUNT KEY ACCESS ANALYSIS SUMMARY:', TerminalColors.CYAN + TerminalColors.BOLD)}")
+        print(f"    {colorize('🚨 CRITICAL Escalations (can create keys):', TerminalColors.RED)} {colorize(str(len(critical_escalations)), TerminalColors.WHITE)}")
+        print(f"    {colorize('⚠ Impersonation Paths:', TerminalColors.YELLOW)} {colorize(str(len(impersonation_paths)), TerminalColors.WHITE)}")
+        print(f"    {colorize('📋 Key Listing Access:', TerminalColors.BLUE)} {colorize(str(len(key_access_paths)), TerminalColors.WHITE)}")
+        
+        if critical_escalations:
+            print(f"    \n    {colorize('⚡ IMMEDIATE PRIVILEGE ESCALATION OPPORTUNITIES:', TerminalColors.RED + TerminalColors.BOLD)}")
+            for crit in critical_escalations:
+                print(f"       {colorize('•', TerminalColors.RED)} {colorize(crit['displayName'], TerminalColors.WHITE)} ({colorize(crit['serviceAccount'], TerminalColors.CYAN)})")
     
     return key_access_analysis
 
@@ -139,14 +165,13 @@ def build_key_access_edges(service_accounts, key_analysis, current_user):
     
     for analysis in key_analysis:
         sa_email = analysis['serviceAccount']
-        sa_unique_id = sa_email.replace('@', '_').replace('.', '_')
         
         # Edge: Current user can list keys for service account
         if analysis['canListKeys']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
-                "end": {"value": f"gcp-sa-{sa_unique_id}"},
                 "kind": "CanListKeys",
+                "start": {"value": current_user, "match_by": "id"},
+                "end": {"value": sa_email, "match_by": "id"},
                 "properties": {
                     "source": "key_access_analysis",
                     "riskLevel": "MEDIUM",
@@ -158,9 +183,9 @@ def build_key_access_edges(service_accounts, key_analysis, current_user):
         # Edge: Current user can create keys for service account (CRITICAL)
         if analysis['canCreateKeys']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
-                "end": {"value": f"gcp-sa-{sa_unique_id}"},
-                "kind": "CanCreateKeys", 
+                "kind": "CanCreateKeys",
+                "start": {"value": current_user, "match_by": "id"},
+                "end": {"value": sa_email, "match_by": "id"},
                 "properties": {
                     "source": "key_access_analysis",
                     "riskLevel": "CRITICAL",
@@ -172,9 +197,9 @@ def build_key_access_edges(service_accounts, key_analysis, current_user):
         # Edge: Current user can impersonate service account
         if analysis['canImpersonate']:
             edges.append({
-                "start": {"value": f"user-{current_user}"},
-                "end": {"value": f"gcp-sa-{sa_unique_id}"},
                 "kind": "CanImpersonate",
+                "start": {"value": current_user, "match_by": "id"},
+                "end": {"value": sa_email, "match_by": "id"},
                 "properties": {
                     "source": "key_access_analysis", 
                     "riskLevel": "HIGH",
