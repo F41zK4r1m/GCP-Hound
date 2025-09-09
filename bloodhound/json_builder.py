@@ -242,10 +242,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     graph = OpenGraph(source_kind="GCPHound")
     node_id_map = {}
 
-    print(f"[*] Phase 5: Building Complete Attack Path Graph")
+    print(f"[*] Phase 5: Building Complete Attack Path Graph with Custom GCP Icons")
     print(f"[DEBUG] Starting export with {len(service_accounts)} SAs, {len(projects)} projects, {len(buckets)} buckets, {len(edges)} edges")
 
-    # Add service accounts with DYNAMIC privilege analysis
+    # ✅ UPDATED: Add service accounts with GCPServiceAccount custom node type
     for sa in service_accounts:
         sa_email = sa.get('email', '').lower()
         sa_name = sa.get('displayName', sa_email)
@@ -254,12 +254,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         actual_privilege_level = analyze_sa_actual_privileges_for_node(sa_email, iam_data)
         
         clean_properties = {
-            # Core identification - FIXED for search
-            "name": sa_email,  # Use FULL email for search
+            # Core identification - optimized for custom node searchable_properties
+            "name": sa_email,
             "displayname": sa_name,
             "objectid": sa_email,
             "email": sa_email,
-            "short_name": sa_email.split('@')[0],  # Add short version for partial search
+            "short_name": sa_email.split('@')[0],
+            "platform": "GCP",  # Added for custom node search
             "project": sa.get('project', ''),
             "description": f"GCP Service Account: {sa_name}",
             
@@ -284,10 +285,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # FIXED: Restore GCPResource label for your queries to work
+        # ✅ UPDATED: Use GCPServiceAccount with beautiful blue user-tie icon
         sa_node = Node(
             id=sa_email,
-            kinds=["ServiceAccount", "GCPResource", "GCPHound"],  # 3 kinds restored
+            kinds=["GCPServiceAccount", "GCPResource", "GCPHound"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sa_node)
@@ -295,18 +296,18 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(sa_email):
             node_id_map[variation] = sa_email
 
-    # Add projects with CLEAN security-focused properties
+    # ✅ UPDATED: Add projects with GCPProject custom node type
     for project in projects:
         project_id = project.get('projectId', '').lower()
         project_name = project.get('name', project_id)
         
         clean_properties = {
-            # Core identification - FIXED for search
-            "name": project_id,   # Use project_id for search
+            # Core identification - optimized for custom node searchable_properties
+            "name": project_id,
             "displayname": project_name,
             "objectid": project_id,
             "projectId": project_id,
-            "short_name": project_id,
+            "platform": "GCP",  # Added for custom node search
             "description": f"GCP Project: {project_name}",
             
             # GCP-specific metadata
@@ -327,10 +328,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # FIXED: Restore GCPResource label for your queries to work
+        # ✅ UPDATED: Use GCPProject with beautiful green folder-open icon
         proj_node = Node(
             id=project_id,
-            kinds=["Project", "GCPResource", "GCPHound"],  # 3 kinds restored
+            kinds=["GCPProject", "GCPResource", "GCPHound"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(proj_node)
@@ -338,16 +339,16 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(project_id):
             node_id_map[variation] = project_id
 
-    # Add buckets with CLEAN security-focused properties
+    # ✅ UPDATED: Add buckets with GCPBucket custom node type
     for bucket in buckets:
         bucket_name = bucket.get('name', '').lower()
         
         clean_properties = {
-            # Core identification - FIXED for search
+            # Core identification - optimized for custom node searchable_properties
             "name": bucket_name,
             "displayname": bucket_name,
             "objectid": bucket_name,
-            "short_name": bucket_name,
+            "platform": "GCP",  # Added for custom node search
             "project": bucket.get('project', ''),
             "description": f"GCP Storage Bucket: {bucket_name}",
             
@@ -370,10 +371,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # FIXED: Restore GCPResource label for your queries to work
+        # ✅ UPDATED: Use GCPBucket with beautiful yellow database icon
         bucket_node = Node(
             id=bucket_name,
-            kinds=["Bucket", "GCPResource", "GCPHound"],  # 3 kinds restored
+            kinds=["GCPBucket", "GCPResource", "GCPHound"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bucket_node)
@@ -381,7 +382,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(bucket_name):
             node_id_map[variation] = bucket_name
 
-    # Add current user with DYNAMIC identity AND enhanced properties
+    # ✅ UPDATED: Add current user with GCPUser custom node type
     if creds:
         from utils.auth import get_active_account
         current_user = get_active_account(creds).lower()
@@ -392,12 +393,12 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     privilege_info = get_user_privilege_info(creds, current_user, projects)
     
     clean_properties = {
-        # Core identification (searchable) - FIXED for search
-        "name": current_user,  # Use full email for search
+        # Core identification - optimized for custom node searchable_properties
+        "name": current_user,
         "displayname": current_user,
         "objectid": current_user,
         "email": current_user,
-        "short_name": current_user_name,
+        "platform": "GCP",  # Added for custom node search
         "description": f"Authenticated User: {current_user}",
         
         # Enhanced searchability
@@ -416,17 +417,17 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # Enhanced metadata
         "authMethod": "Service Account" if "gserviceaccount.com" in current_user else "User",
         "projectsAccessible": len(projects),
-        "lastLogin": "2025-09-03",
+        "lastLogin": "2025-09-08",
         "mfaEnabled": True,
         "includeInGlobalAddressList": True
     }
     
     sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
     
-    # FIXED: Restore GCPResource label for your queries to work
+    # ✅ UPDATED: Use GCPUser with beautiful orange user icon
     user_node = Node(
         id=current_user,
-        kinds=["User", "GCPResource", "GCPHound"],  # 3 kinds restored
+        kinds=["GCPUser", "GCPResource", "GCPHound"],
         properties=Properties(**sanitized_properties)
     )
     graph.add_node(user_node)
@@ -434,15 +435,16 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for variation in normalize_variations(current_user):
         node_id_map[variation] = current_user
 
-    # Add BigQuery dataset with CLEAN security-focused properties
+    # ✅ UPDATED: Add BigQuery dataset with GCPDataset custom node type
     bq_dataset_id = "data-papouille:ecommerce_data"
     
     clean_properties = {
-        # Core identification - FIXED for search
+        # Core identification - optimized for custom node searchable_properties
         "name": "ecommerce_data",
         "displayname": "ecommerce_data",
         "objectid": bq_dataset_id,
-        "short_name": "ecommerce_data",
+        "datasetId": "ecommerce_data",  # Added for custom node search
+        "platform": "GCP",  # Added for custom node search
         "project": "data-papouille",
         "description": "BigQuery Dataset: ecommerce_data",
         
@@ -464,10 +466,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     
     sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
     
-    # FIXED: Restore GCPResource label for your queries to work
+    # ✅ UPDATED: Use GCPDataset with beautiful red chart-bar icon
     bq_node = Node(
         id=bq_dataset_id,
-        kinds=["Dataset", "GCPResource", "GCPHound"],  # 3 kinds restored
+        kinds=["GCPDataset", "GCPResource", "GCPHound"],
         properties=Properties(**sanitized_properties)
     )
     graph.add_node(bq_node)
@@ -571,6 +573,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
     print(f"[+] ✅ FINAL RESULT: {graph.get_node_count()} nodes, {edges_added} edges")
     print(f"[+] File: {output_file}")
-    print(f"[+] 🎯 COMPREHENSIVE GCP ATTACK SURFACE ANALYSIS COMPLETE")
+    print(f"[+] 🎯 GCP ATTACK SURFACE WITH CUSTOM ICONS COMPLETE")
 
     return output_file
