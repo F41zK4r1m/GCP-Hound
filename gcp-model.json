@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "version": "1.0",
+    "description": "GCP-Hound Complete Custom Node Types - All 23 nodes including network, identity, and security"
+  },
+  "custom_kinds": {
+    "ServiceAccount": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "user-secret",
+        "color": "#4CAF50"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "email", "objectid", "platform"]
+    },
+    "Project": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "folder-open",
+        "color": "#FF5722"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "projectId", "objectid", "platform"]
+    },
+    "Bucket": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "database",
+        "color": "#2196F3"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "Dataset": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "chart-bar",
+        "color": "#9C27B0"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "datasetId", "objectid", "platform"]
+    },
+    "GCPFunction": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "code",
+        "color": "#673AB7"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPPubSubTopic": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "broadcast-tower",
+        "color": "#607D8B"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPOrganization": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "building",
+        "color": "#424242"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPFolder": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "folder",
+        "color": "#8BC34A"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPProject": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "folder-open",
+        "color": "#34A853"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "projectId", "objectid", "platform"]
+    },
+    "GCPBucket": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "database",
+        "color": "#FBBC04"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPInstance": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "server",
+        "color": "#9C27B0"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "zone", "platform"]
+    },
+    "GCPCluster": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "cubes",
+        "color": "#00BCD4"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "location", "platform"]
+    },
+    "GCPSQLInstance": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "database",
+        "color": "#795548"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPServiceAccount": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "user-tie",
+        "color": "#4285F4"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "email", "objectid", "short_name", "platform"]
+    },
+    "GCPDataset": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "chart-bar",
+        "color": "#EA4335"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "datasetId", "objectid", "platform"]
+    },
+    "GCPSecret": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "key",
+        "color": "#FF6D00"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPUser": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "user",
+        "color": "#FF9800"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "email", "displayname", "objectid", "platform"]
+    },
+    "GCPGroup": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "users",
+        "color": "#FF5722"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "email", "displayname", "objectid", "platform"]
+    },
+    "GCPRole": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "shield-alt",
+        "color": "#E91E63"
+      },
+      "display_property": "title",
+      "searchable_properties": ["name", "title", "objectid", "stage", "platform"]
+    },
+    "GCPServiceAccountKey": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "key",
+        "color": "#3F51B5"
+      },
+      "display_property": "keyId",
+      "searchable_properties": ["keyId", "keyType", "keyAlgorithm", "objectid", "platform"]
+    },
+    "GCPNetwork": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "network-wired",
+        "color": "#00BCD4"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPFirewall": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "fire",
+        "color": "#FF5722"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    },
+    "GCPKMSKey": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "lock",
+        "color": "#795548"
+      },
+      "display_property": "displayname",
+      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+    }
+  }
+}
