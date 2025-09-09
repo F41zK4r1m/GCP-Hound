@@ -22,7 +22,6 @@ from collectors.iam_collector import collect_iam, analyze_cross_project_permissi
 from collectors.user_collector import collect_users
 from collectors.folder_collector import collect_folders, build_folder_edges
 from bloodhound.json_builder import export_bloodhound_json
-from bloodhound.icon_registry import register_gcp_icons_and_search
 from utils.auth import get_google_credentials, get_active_account
 from google.auth import impersonated_credentials
 from googleapiclient.errors import HttpError
@@ -68,14 +67,6 @@ def handle_api_error(e, context="API call", args=None):
             print(f"[!] {context}: Error occurred")
         return False
     return False
-
-def get_bloodhound_token():
-    """Get BloodHound API token from environment variable"""
-    token = os.getenv('BLOODHOUND_TOKEN')
-    if not token:
-        # Try alternative environment variable names
-        token = os.getenv('BH_TOKEN') or os.getenv('BLOODHOUND_API_TOKEN')
-    return token
 
 def setup_impersonation(service_account_email, verbose=False):
     """Setup impersonated credentials for a service account"""
@@ -125,18 +116,17 @@ AUTHENTICATION:
     • Access BigQuery datasets, GKE clusters
     • (Optional) Google Workspace Admin API for user/group enumeration
 
-BLOODHOUND SETUP:
-  For search functionality, set your BloodHound API token:
-    $ export BLOODHOUND_TOKEN="your-bloodhound-api-token"
+BLOODHOUND INTEGRATION:
+  To enable GCP object search in BloodHound UI, run the setup script first:
+    $ python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
     
-  Get token from BloodHound UI → Developer Tools → Network → Authorization header
+  This registers custom GCP node types and icons (one-time setup per BloodHound instance)
 
 Examples:
-  # First authenticate
+  # First authenticate with Google Cloud
   $ gcloud auth application-default login
-  $ export BLOODHOUND_TOKEN="your-token"
   
-  # Then run analysis
+  # Then run GCP analysis
   python3 gcp-hound.py                                    # Clean output
   python3 gcp-hound.py -v                                 # Verbose progress
   python3 gcp-hound.py -d                                 # Debug details
@@ -159,8 +149,6 @@ For more authentication details: https://cloud.google.com/docs/authentication
                        help='Output directory for results (default: ./output)')
     parser.add_argument('-q', '--quiet', action='store_true',
                        help='Suppress banner and minimize output')
-    parser.add_argument('--no-icons', action='store_true',
-                       help='Skip BloodHound icon registration')
     
     args = parser.parse_args()
 
@@ -218,24 +206,6 @@ For more authentication details: https://cloud.google.com/docs/authentication
             user = get_active_account(creds)
         
         print(f"[+] Running as: {colorize(user, TerminalColors.GREEN)}")
-        
-        # Register GCP search functionality
-        if not args.no_icons:
-            try:
-                BLOODHOUND_URL = "http://localhost:8080"
-                bloodhound_token = get_bloodhound_token()
-                
-                if bloodhound_token:
-                    register_gcp_icons_and_search(BLOODHOUND_URL, bloodhound_token)
-                    if args.verbose:
-                        print(f"[+] {colorize('GCP search enabled in BloodHound UI', TerminalColors.GREEN)}")
-                else:
-                    if args.verbose:
-                        print(f"[*] {colorize('BloodHound token not set - search via Cypher only', TerminalColors.YELLOW)}")
-                        
-            except Exception as e:
-                if args.debug:
-                    print(f"[DEBUG] Search registration failed: {e}")
         
         # Phase 1-3: Discovery and enumeration
         print(f"\n[*] 🔍 {colorize('Phase 1-3: Reconnaissance & Resource Discovery', TerminalColors.CYAN)}")
@@ -584,8 +554,6 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"📁 {colorize('OUTPUT:', TerminalColors.CYAN)}")
         if output_file:
             print(f"    BloodHound JSON: {output_file}")
-            if not args.no_icons:
-                print(f"    Custom GCP Icons: {'Registered' if get_bloodhound_token() else 'Skipped (no token)'}")
         else:
             print(f"    BloodHound export: Failed")
         
@@ -596,6 +564,10 @@ For more authentication details: https://cloud.google.com/docs/authentication
             print(f"    2. Run queries to visualize attack paths")
             if critical_edges > 0:
                 print(f"    3. Focus on CRITICAL risk findings first")
+            print()
+            print(f"    💎 {colorize('Enable GCP Search & Icons:', TerminalColors.CYAN)}")
+            print(f"       python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password")
+            print(f"       (One-time setup to make GCP objects searchable in BloodHound UI)")
         else:
             print(f"    1. Check permissions and re-run with -d flag")
             print(f"    2. Enable required GCP APIs")
