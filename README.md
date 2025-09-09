@@ -276,6 +276,61 @@ RETURN n, r, m LIMIT 100
 <img width="1776" height="669" alt="image" src="https://github.com/user-attachments/assets/4389b377-567f-4d2f-8f53-80babc19cee5" />
 
 
+#### More example queries
+
+- Basic Node Enumeration
+
+```
+// List all service accounts
+MATCH (sa:GCPServiceAccount) RETURN sa LIMIT 25
+
+// List all GCP projects  
+MATCH (p:GCPProject) RETURN p LIMIT 25
+
+// List all GCP resources
+MATCH (res:GCPResource) RETURN res LIMIT 25
+
+// List all storage buckets
+MATCH (b:GCPBucket) RETURN b LIMIT 25
+
+// List all BigQuery datasets
+MATCH (d:GCPDataset) RETURN d LIMIT 25
+```
+
+- Relationship Discovery
+
+```
+// Show project-to-service-account relationships
+MATCH p=(project:GCPProject)-[r:ContainsServiceAccount]->(sa:GCPServiceAccount) RETURN p LIMIT 25
+
+// Explore all service account relationships
+MATCH (sa:GCPServiceAccount)-[r]->(target) RETURN sa, r, target LIMIT 25
+
+// Show all GCP resource relationships
+MATCH (res:GCPResource)-[r]->(target) RETURN res, r, target LIMIT 50
+
+// Find bucket ownership relationships
+MATCH p=(project:GCPProject)-[r:OwnsStorageBucket]->(bucket:GCPBucket) RETURN p LIMIT 25
+```
+
+- Critical Security Analysis
+
+```
+// CRITICAL: Find service account key creation privileges
+MATCH (source)-[r:CanCreateKeys]->(target) RETURN source, r, target
+
+// HIGH RISK: Service account impersonation paths
+MATCH (sa:GCPServiceAccount)-[r:CanImpersonate]->(target) RETURN sa, r, target LIMIT 25
+
+// List key enumeration capabilities
+MATCH (source)-[r:CanListKeys]->(target) RETURN source, r, target LIMIT 25
+
+// Show all privilege escalation edges
+MATCH (n)-[r]->(m) 
+WHERE type(r) IN ['CanCreateKeys', 'CanImpersonate', 'CanListKeys']
+RETURN n, r, m LIMIT 50
+```
+
 ---
 
 ## 📈 Sample Output
