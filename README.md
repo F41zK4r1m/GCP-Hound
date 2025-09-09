@@ -19,81 +19,52 @@
 
 ## 🎯 Overview
 
-**GCP-Hound** is a cutting-edge **attack path discovery and privilege escalation analysis tool** for Google Cloud Platform environments. Built on the BloodHound OpenGraph framework, it transforms complex GCP IAM relationships into interactive attack graphs, empowering security teams to identify and remediate critical cloud vulnerabilities.
+**GCP-Hound** is an open-source security enumeration and privilege escalation discovery tool designed specifically for Google Cloud Platform environments. Built to integrate seamlessly with **BloodHound's OpenGraph** framework, it transforms complex GCP IAM relationships into interactive attack graphs.
 
-> Example graphs:
+### 🎯 Project Background
 
-```
-# GCP Resource relationship
+This project began as a personal learning journey into GCP-focused penetration testing and red teaming techniques. While GCP-Hound already provides substantial reconnaissance and analysis capabilities, it remains a work-in-progress tool that will continue evolving with new features and improvements over time.
 
-MATCH (n:GCPResource)-[r]->(m) 
-RETURN n, r, m LIMIT 50
-```
-
-<img width="1839" height="752" alt="image" src="https://github.com/user-attachments/assets/8c062b89-decc-47f7-aaf3-46e77dbfd175" />
-
-```
-# Key creation attack path
-
-MATCH (n)-[r:CanCreateKeys]->(m) 
-RETURN n, r, m
-```
-
-<img width="1887" height="953" alt="image" src="https://github.com/user-attachments/assets/b1cab70b-9bda-47bb-af2b-e5c1625a09a7" />
-
-```
-# show complete attack surface
-
-MATCH (n)-[r]->(m) 
-RETURN n, r, m LIMIT 100
-```
-
-<img width="1923" height="778" alt="image" src="https://github.com/user-attachments/assets/fa8c187a-b171-48f4-b2d9-d77292c76136" />
-
-```
-# show high-risk relations
-
-MATCH (n)-[r]->(m) 
-WHERE r.riskLevel IN ["HIGH", "CRITICAL"] 
-RETURN n, r, m
-```
-
-<img width="1436" height="811" alt="image" src="https://github.com/user-attachments/assets/fddd41e3-4125-4869-b8d2-f475751f0cb4" />
-
-
-
-### 🔥 What Makes GCP-Hound Special
-
-- **🎨 Beautiful Visualizations**: Custom GCP icons and professional graph layouts in BloodHound
-- **🚨 Real Vulnerability Detection**: Discovers actual privilege escalation paths and misconfigurations  
-- **⚡ Lightning Fast**: Multi-threaded enumeration across GCP services
+The tool may currently lack many advanced features, but I'm committed to gradually improving and expanding its capabilities based on community feedback and real-world testing scenarios.
 
 ---
 
-## 🛡️ Core Security Capabilities
+## ✨ Key Features
 
-### **Identity & Access Analysis**
-- 🔐 **Service Account Enumeration** - Discover all service accounts and their permissions
-- 👥 **User & Group Mapping** - Map user identities and group memberships  
-- 🔑 **Service Account Key Analysis** - Detect dangerous key creation permissions
-- 🎭 **Impersonation Detection** - Find service account impersonation chains
+### **🔥 Current Capabilities (Implemented)**
+- **🔍 Comprehensive GCP Enumeration** - Projects, service accounts, storage buckets, BigQuery datasets
+- **👥 Identity & Access Analysis** - Users, groups, and Google Workspace integration  
+- **🚨 Advanced Privilege Escalation Detection** - Service account key analysis and impersonation chains
+- **☸️ Container Security** - GKE cluster enumeration and Kubernetes RBAC analysis
+- **🔐 Secret Management** - Secret Manager enumeration and access analysis
+- **💻 Compute Infrastructure** - VM instances, disks, and compute resource discovery
+- **🌐 Network Mapping** - VPC, subnets, firewall rules, and network topology
+- **🏢 Organizational Structure** - Folder hierarchy and project organization mapping
+- **🎨 Professional BloodHound Integration** - Custom GCP icons and OpenGraph compatibility
 
-### **Resource Discovery**
-- 📁 **Project Enumeration** - Discover all accessible GCP projects
-- 🗄️ **Cloud Storage Analysis** - Find buckets and analyze access permissions
-- 📊 **BigQuery Discovery** - Map datasets and table access patterns
+### **🚧 Future Enhancements (Planned)**
+- [ ] **Pub/Sub Enumeration** - Topics, subscriptions, and messaging analysis
+- [ ] **Cloud Functions Deep Analysis** - Serverless function security assessment
 
-### **Attack Path Analysis** 
-- 🚨 **CRITICAL Privilege Escalations** - Service account key creation vulnerabilities
-- ⚠️ **HIGH-Risk Impersonations** - Cross-account privilege escalation paths  
-- 📈 **Risk Scoring** - CVSS-inspired risk ratings for each finding
-- 🎯 **Attack Chains** - Multi-hop privilege escalation sequences
+### 🚨 **Advanced Privilege Escalation Detection**
+- **Service Account Key Analysis** - Detect dangerous key creation/management permissions
+- **Impersonation Chain Discovery** - Map cross-account privilege escalation paths
+- **Risk-Based Scoring** - CRITICAL, HIGH, MEDIUM risk classifications (Still working on it to make it perfect)
+- **Multi-Hop Attack Chains** - Complex privilege escalation sequences
 
----
+### 🎨 **Professional BloodHound Integration**
+- **Custom GCP Icons** - Beautiful, distinct icons for each GCP resource type
+- **OpenGraph Compatibility** - Full BloodHound v8.0+ support
+- **Interactive Visualizations** - Explore attack paths through BloodHound's interface
 
-## 🚀 Quick Start
+## 🚀 Installation & Setup
 
-### **1. Setup Python Environment**
+### **Prerequisites**
+- Python 3.9 or higher
+- Access to target GCP environment(s)
+- BloodHound Community Edition or Enterprise (optional, for visualization)
+
+### **1. Clone Repository**
 
 ## Clone repository
 
@@ -136,12 +107,66 @@ gcloud auth application-default login
 gcloud auth login
 ```
 
-### **3. Run GCP-Hound Analysis**
+### **3. BloodHound Integration Setup (Optional but Recommended)**
+
+To enable custom GCP icons and node types in BloodHound:
+
+```
+python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
+```
+
+This step is required only once per BloodHound instance and enables:
+- ✅ Custom GCP icons in the BloodHound UI  
+- ✅ Searchable GCP node types
+- ✅ Enhanced visualization experience
+
+---
+
+## 🎮 Usage
+
+### **Basic Analysis**
+
+### **4. Run GCP-Hound Analysis**
 
 ```
 python3 gcp-hound.py
 ```
 
+### Verbose output (recommended for first runs)
+
+```
+python3 gcp-hound.py -v
+```
+
+### Target specific project
+
+```
+python3 gcp-hound.py -p my-gcp-project
+```
+
+### Debug mode for troubleshooting
+
+```
+python3 gcp-hound.py -d
+```
+
+### Custom output directory
+
+```
+python3 gcp-hound.py -o /path/to/output
+```
+
+### Impersonate service account
+
+```
+python3 gcp-hound.py -i service@project.iam.gserviceaccount.com
+```
+
+### Quiet mode (minimal output)
+
+```
+python3 gcp-hound.py -q
+```
 
 ### **4. Import to BloodHound**
 - Generated file: `./output/gcp-bhopengraph.json`
@@ -150,27 +175,66 @@ python3 gcp-hound.py
 
 ---
 
-## 📊 Analysis Phases
+### **Analysis Phases**
 
-GCP-Hound performs comprehensive security analysis in **6 phases**:
+GCP-Hound performs analysis in **6 comprehensive phases**:
 
-### **Phase 1: Authentication & Project Discovery** 
-- Validates GCP credentials and discovers accessible projects
+1. **🔍 Authentication & Project Discovery** - Validate credentials and discover accessible projects
+2. **📊 API Capability Assessment** - Determine available GCP APIs and permissions
+3. **🗂️ Resource Enumeration** - Discover service accounts, storage, BigQuery, GKE, and compute resources
+4. **🔐 Privilege Analysis** - Analyze service account permissions and key access capabilities
+5. **🚨 Privilege Escalation Detection** - Identify critical attack paths and escalation opportunities  
+6. **📈 BloodHound Export** - Generate OpenGraph JSON with custom GCP visualizations
 
-### **Phase 2: Identity Enumeration**
-- Service account discovery, user enumeration, IAM analysis
+### **BloodHound Import**
 
-### **Phase 3: Resource Discovery**
-- Cloud Storage, BigQuery, and compute resource identification
+After analysis completes:
 
-### **Phase 4: Permission Analysis**
-- Service account key access analysis and IAM permission mapping
+1. Locate the generated file: `./output/gcp-bhopengraph.json`
+2. Open BloodHound web interface
+3. Navigate to "Data Collection" → "File Ingest"
+4. Upload the JSON file
+5. Explore your GCP attack surface!
 
-### **Phase 5: Privilege Escalation Detection**
-- Critical privilege escalation paths and attack chain synthesis
+---
 
-### **Phase 6: BloodHound Integration**
-- OpenGraph format export and custom GCP icon registration
+## 📊 Enumerated Resources & Relationships
+
+### **GCP Node Types**
+
+GCP-Hound currently enumerates **23 distinct GCP node types** across the Google Cloud ecosystem:
+
+| Category | Node Types | Description |
+|----------|------------|-------------|
+| **Identity & Access** | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey` | User identities, groups, and service accounts |
+| **Organization** | `GCPProject`, `GCPFolder`, `GCPOrganization` | Organizational structure and hierarchy |
+| **Compute & Containers** | `GCPInstance`, `GCPCluster`, `GCPNode` | Compute Engine VMs and GKE clusters |
+| **Storage & Data** | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction` | Storage, BigQuery, and Secret Manager |
+| **Networking** | `GCPNetwork`, `GCPVPC`, `GCPSubnet`, `GCPFirewall`, `GCPRole` | Network infrastructure and security |
+| **Additional Services** | `GCPPubSubTopic`, `GCPCloudFunction`, `GCPKMSKey` | Messaging, serverless, and encryption |
+
+*Note: While `GCPPubSubTopic` is registered as a node type, **Pub/Sub enumeration is not yet implemented** in the current collectors.*
+
+
+### **Attack Relationship Types**
+
+| Edge Type | Risk Level | Description |
+|-----------|------------|-------------|
+| `CanCreateKeys` | **CRITICAL** | Ability to create service account keys (direct privilege escalation) |
+| `CanImpersonate` | **HIGH** | Service account impersonation capabilities |
+| `CanListKeys` | **MEDIUM** | Ability to enumerate existing service account keys |
+| `ContainsServiceAccount` | **LOW** | Project ownership of service accounts |
+| `OwnsStorageBucket` | **MEDIUM** | Resource ownership relationships |
+| `BelongsTo` | **INFO** | Resource-to-project associations |
+
+### **Understanding Attack Paths**
+
+GCP-Hound focuses on discovering privilege escalation opportunities through:
+
+- **Service Account Key Creation** → Direct credential access → Full service account privileges
+- **Cross-Project Impersonation** → Privilege escalation across GCP projects  
+- **Storage Bucket Access** → Data exfiltration or modification capabilities
+- **BigQuery Data Access** → Sensitive data exposure and analysis
 
 ---
 
@@ -199,13 +263,7 @@ WHERE r.riskLevel = "CRITICAL"
 RETURN n, r, m
 ```
 
-**Find service account privilege escalations:**
-
-```
-MATCH (n)-[r:CanCreateKeys]->(m)
-RETURN n, r, m
-```
-
+<img width="1045" height="679" alt="image" src="https://github.com/user-attachments/assets/9de82f6e-63da-4576-ae5c-9b0bb49a841d" />
 
 **Show complete GCP attack surface:**
 
@@ -214,6 +272,8 @@ RETURN n, r, m
 MATCH (n:GCPResource)-[r]->(m:GCPResource)
 RETURN n, r, m LIMIT 100
 ```
+
+<img width="1776" height="669" alt="image" src="https://github.com/user-attachments/assets/4389b377-567f-4d2f-8f53-80babc19cee5" />
 
 
 ---
@@ -246,7 +306,6 @@ RETURN n, r, m LIMIT 100
 📁 File: ./output/gcp-bhopengraph.json
 ```
 
-
 ---
 
 ## 🔒 Security & Ethics
@@ -257,29 +316,76 @@ RETURN n, r, m LIMIT 100
 
 ## 🛠️ Development & Contribution
 
-### **Project Structure**
+Contributions are welcome! This project is a learning exercise, and I appreciate:
+
+- Bug reports and feature requests
+- Code contributions and improvements
+- Documentation enhancements
+- Testing in different GCP environments
+
+Please feel free to:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+---
+
+## 🔮 Roadmap & TODO
+
+### **Immediate Priorities**
+- [ ] **Work on making all objects searchable from BloodHound UI** - Fix search functionality for GCP nodes
+- [ ] **Work on integrating with AD objects** - Connect GCP identities with Active Directory  
+- [ ] **Work on adding more recon features and detailing** - Expand enumeration capabilities
+
+### **Upcoming Features**
+- [ ] **Pub/Sub & Messaging** - Topics, subscriptions, and Cloud Tasks enumeration
+- [ ] **Advanced Serverless** - Cloud Functions, Cloud Run, and App Engine analysis
+- [ ] **Enhanced Networking** - Load balancers, CDN, and interconnect discovery
+---
+
+## 🛠️ Project Structure
 
 ```
-gcp-hound/
-├── gcp-hound.py # Main enumeration script
+GCP-Hound/
 ├── bloodhound/
-│ ├── json_builder.py # BloodHound JSON export
-│ └── icon_registry.py # Custom icon registration
-├── modules/
-│ ├── gcp_enum.py # GCP resource enumeration
-│ ├── iam_analysis.py # IAM permission analysis
-│ └── privilege_escalation.py # Attack path detection
-└── requirements.txt # Python dependencies
+│   ├── __init__.py
+│   └── json_builder.py
+│
+├── collectors/
+│   ├── __init__.py
+│   ├── bigquery_collector.py
+│   ├── bucket_collector.py
+│   ├── cloudfunctions_collector.py
+│   ├── cloudsql_collector.py
+│   ├── compute_collector.py
+│   ├── discovery.py
+│   ├── edge_builder.py
+│   ├── folder_collector.py
+│   ├── gke_collector.py
+│   ├── iam_collector.py
+│   ├── org_collector.py
+│   ├── privesc_analyzer.py
+│   ├── project_collector.py
+│   ├── pubsub_collector.py
+│   ├── sa_key_analyzer.py
+│   ├── secret_collector.py
+│   ├── service_account_collector.py
+│   ├── user_collector.py
+│   ├── users_groups_collector.py
+│   └── util.py
+│
+├── utils/
+│   └── auth.py
+│
+├── .gitignore
+├── LICENSE
+├── README.md
+├── gcp-hound.py
+├── gcp-model.json
+├── register_gcp_nodes.py
+└── requirements.txt
 ```
-
-
-### **Future Roadmap**
-- 🚀 **Compute Engine enumeration** (VMs, instance groups, images)
-- 🌐 **Networking analysis** (VPCs, subnets, firewall rules)
-- 🔔 **Pub/Sub and Cloud Functions** discovery
-- 🎛️ **GKE cluster enumeration** and RBAC analysis
-- 📊 **Compliance reporting** (CIS, NIST frameworks)
-- 🔄 **CI/CD integration** for continuous monitoring
 
 ---
 
@@ -292,8 +398,8 @@ gcp-hound/
 
 <div align="center">
 
-**🎯 Deploy GCP security visibility and stay one step ahead of adversaries with GCP-Hound!**
+**🎯 Enhance your GCP security posture with GCP-Hound!**
 
-*Made with ❤️ by the security community*
+*Built as a learning project for the cybersecurity community*
 
 </div>
