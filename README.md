@@ -4,6 +4,9 @@
 
 **🚀 Advanced GCP Attack Surface Analysis & Privilege Escalation Discovery**
 
+<img width="238" height="197" alt="image" src="https://github.com/user-attachments/assets/cad67dc4-de8d-4c9e-abcf-af2742d0224d" />
+
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![BloodHound Compatible](https://img.shields.io/badge/BloodHound-8.0+-red.svg)](https://bloodhound.specterops.io/)
