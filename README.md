@@ -1,4 +1,4 @@
-# 🔐 GCP-Hound - Google Cloud Security Attack Path Discovery Tool
+# ☁️ GCP-Hound - Google Cloud Security Attack Path Discovery Tool
 
 <div align="center">
 
