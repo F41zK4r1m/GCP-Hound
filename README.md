@@ -62,7 +62,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 ### **Prerequisites**
 - Python 3.9 or higher
 - Access to target GCP environment(s)
-- BloodHound Community Edition or Enterprise (optional, for visualization)
+- BloodHound (8.0 or higher) Community Edition or Enterprise (optional, for visualization)
 
 ### **1. Clone Repository**
 
