@@ -5,8 +5,8 @@ from bhopengraph.Properties import Properties
 import os
 import json
 
-def normalize_variations(text):
-    """Generate all possible ID variations"""
+def normalize_variations(text, discovered_projects=None):
+    """Generate all possible ID variations - NOW WITH DYNAMIC PROJECT NAMES"""
     variations = set()
     variations.add(text)
     
@@ -22,9 +22,13 @@ def normalize_variations(text):
         if '@' in text and 'gserviceaccount.com' in text:
             variations.add(f"gcp-sa-{var}")
             variations.add(f"user-{var}")
-        if 'data-papouille' in text and '@' not in text:
-            variations.add(f"gcp-project-{var}")
-            variations.add(f"gcp-bucket-{var}")
+
+        if discovered_projects and '@' not in text:
+            for project_name in discovered_projects:
+                if project_name.lower() in text.lower():
+                    variations.add(f"gcp-project-{var}")
+                    variations.add(f"gcp-bucket-{var}")
+                    break  
     
     return variations
 
@@ -39,17 +43,26 @@ def sanitize_property_value(value):
     return str(value)
 
 def fix_edge_name(edge_name):
-    """Clean up unreadable edge names"""
+    """Clean up verbose edge names to readable format"""
     edge_mapping = {
+        # Current mappings (keep these)
         "CanEscalateViaIamserviceaccountkeyscreate": "CanCreateKeys",
-        "CanEscalateViaIamserviceaccountsactas": "CanImpersonate",
+        "CanEscalateViaIamserviceaccountsactas": "CanImpersonate", 
         "CanEscalateViaIamserviceaccountsgetaccesstoken": "CanGetAccessToken",
         "CanEscalateViaIamserviceaccountssignblob": "CanSignBlob",
         "CanEscalateViaIamserviceaccountssignjwt": "CanSignJWT",
         "CanEscalateViaIamserviceaccountsauth": "CanAuthenticate",
         "CanEscalateViaIamserviceaccounts": "CanImpersonate",
+        "CanEscalateViaIamserviceaccountssetiampolicy": "CanModifyIamPolicy",
+        "CanEscalateViaIamserviceaccountssetiapolicy": "CanModifyIamPolicy",
+        "CanEscalateViaIamserviceaccountsgetaccesstoken": "CanGetAccessToken",
+        "CanEscalateViaComputeinstancescreate": "CanCreateComputeInstance",
+        "CanEscalateViaCloudfunctionscreate": "CanCreateCloudFunction",
+        "CanEscalateViaResourcemanagerprojectssetiampolicy": "CanModifyProjectPolicy",
+        "CanEscalateViaStoragebucketssetiampolicy": "CanModifyBucketPolicy",
     }
     return edge_mapping.get(edge_name, edge_name)
+
 
 def get_sa_roles_from_iam(sa_email, iam_data):
     """Extract actual roles assigned to service account from IAM data"""
@@ -240,10 +253,16 @@ def get_user_privilege_info(creds, current_user, projects):
 
 def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None):
     graph = OpenGraph(source_kind="GCPHound")
-    node_id_map = {}
-
+    
     print(f"[*] Phase 5: Building Complete Attack Path Graph with Custom GCP Icons")
     print(f"[DEBUG] Starting export with {len(service_accounts)} SAs, {len(projects)} projects, {len(buckets)} buckets, {len(edges)} edges")
+
+    # ✅ DYNAMIC: Extract project names from enumerated data
+    discovered_project_names = [p.get('projectId', '').lower() for p in projects if p.get('projectId')]
+    print(f"[DEBUG] Discovered projects: {discovered_project_names}")
+    
+    # Build node mapping with dynamic project names
+    node_id_map = {}
 
     # ✅ UPDATED: Add service accounts with GCPServiceAccount custom node type
     for sa in service_accounts:
@@ -293,7 +312,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(sa_node)
         
-        for variation in normalize_variations(sa_email):
+        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        for variation in normalize_variations(sa_email, discovered_project_names):
             node_id_map[variation] = sa_email
 
     # ✅ UPDATED: Add projects with GCPProject custom node type
@@ -336,7 +356,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(proj_node)
         
-        for variation in normalize_variations(project_id):
+        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        for variation in normalize_variations(project_id, discovered_project_names):
             node_id_map[variation] = project_id
 
     # ✅ UPDATED: Add buckets with GCPBucket custom node type
@@ -379,7 +400,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(bucket_node)
         
-        for variation in normalize_variations(bucket_name):
+        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        for variation in normalize_variations(bucket_name, discovered_project_names):
             node_id_map[variation] = bucket_name
 
     # ✅ UPDATED: Add current user with GCPUser custom node type
@@ -417,7 +439,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # Enhanced metadata
         "authMethod": "Service Account" if "gserviceaccount.com" in current_user else "User",
         "projectsAccessible": len(projects),
-        "lastLogin": "2025-09-08",
+        "lastLogin": "2025-09-11",
         "mfaEnabled": True,
         "includeInGlobalAddressList": True
     }
@@ -432,69 +454,69 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     )
     graph.add_node(user_node)
     
-    for variation in normalize_variations(current_user):
+    # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+    for variation in normalize_variations(current_user, discovered_project_names):
         node_id_map[variation] = current_user
 
-    # ✅ UPDATED: Add BigQuery dataset with GCPDataset custom node type
-    bq_dataset_id = "data-papouille:ecommerce_data"
-    
-    clean_properties = {
-        # Core identification - optimized for custom node searchable_properties
-        "name": "ecommerce_data",
-        "displayname": "ecommerce_data",
-        "objectid": bq_dataset_id,
-        "datasetId": "ecommerce_data",  # Added for custom node search
-        "platform": "GCP",  # Added for custom node search
-        "project": "data-papouille",
-        "description": "BigQuery Dataset: ecommerce_data",
+    # ✅ UPDATED: Add BigQuery dataset with GCPDataset custom node type - DYNAMICALLY
+    for project in projects:
+        project_id = project.get('projectId', '').lower()
+        bq_dataset_id = f"{project_id}:ecommerce_data"  # Use actual project ID
         
-        # GCP-specific metadata
-        "gcpResourceType": "BigQuery Dataset",
-        "gcpDatasetType": "BigQuery",
-        "gcpTableCount": 0,
-        "location": "EU",
+        clean_properties = {
+            # Core identification - optimized for custom node searchable_properties
+            "name": "ecommerce_data",
+            "displayname": "ecommerce_data",
+            "objectid": bq_dataset_id,
+            "datasetId": "ecommerce_data",  # Added for custom node search
+            "platform": "GCP",  # Added for custom node search
+            "project": project_id,  # Use actual project ID
+            "description": "BigQuery Dataset: ecommerce_data",
+            
+            # GCP-specific metadata
+            "gcpResourceType": "BigQuery Dataset",
+            "gcpDatasetType": "BigQuery",
+            "gcpTableCount": 0,
+            "location": "EU",
+            
+            # Security analysis
+            "riskLevel": "MEDIUM",
+            "gcpEncryption": "Google-managed",
+            "gcpDataClassification": "INTERNAL",
+            "dataRetentionDays": 90,
+            "containsPII": "Unknown",
+            "accessLogging": "Enabled",
+            "remediationPriority": "MEDIUM"
+        }
         
-        # Security analysis
-        "riskLevel": "MEDIUM",
-        "gcpEncryption": "Google-managed",
-        "gcpDataClassification": "INTERNAL",
-        "dataRetentionDays": 90,
-        "containsPII": "Unknown",
-        "accessLogging": "Enabled",
-        "remediationPriority": "MEDIUM"
-    }
-    
-    sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
-    
-    # ✅ UPDATED: Use GCPDataset with beautiful red chart-bar icon
-    bq_node = Node(
-        id=bq_dataset_id,
-        kinds=["GCPDataset", "GCPResource", "GCPHound"],
-        properties=Properties(**sanitized_properties)
-    )
-    graph.add_node(bq_node)
-    
-    for variation in normalize_variations(bq_dataset_id):
-        node_id_map[variation] = bq_dataset_id
-    node_id_map["gcp-bq-dataset-data-papouille-ecommerce_data"] = bq_dataset_id
+        sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+        
+        bq_node = Node(
+            id=bq_dataset_id,
+            kinds=["GCPDataset", "GCPResource", "GCPHound"],
+            properties=Properties(**sanitized_properties)
+        )
+        graph.add_node(bq_node)
+        
+        for variation in normalize_variations(bq_dataset_id, discovered_project_names):
+            node_id_map[variation] = bq_dataset_id
+        node_id_map[f"gcp-bq-dataset-{project_id}-ecommerce_data"] = bq_dataset_id
 
     print(f"[DEBUG] Nodes added: {graph.get_node_count()}")
     print(f"[DEBUG] Total ID mappings: {len(node_id_map)}")
 
-    # FIXED: Build comprehensive ID variation sets for proper validation
     all_sa_variations = set()
     for sa in service_accounts:
         sa_email = sa.get('email', '').lower()
-        for variation in normalize_variations(sa_email):
+        for variation in normalize_variations(sa_email, discovered_project_names):
             all_sa_variations.add(variation)
 
     all_project_variations = set()
     for project in projects:
         project_id = project.get('projectId', '').lower()
-        for variation in normalize_variations(project_id):
+        for variation in normalize_variations(project_id, discovered_project_names):
             all_project_variations.add(variation)
 
-    # Process edges with PROPER validation for privilege escalation edges
     edges_added = 0
     for i, edge_data in enumerate(edges):
         start_id = edge_data.get("start", {}).get("value", "").lower()
@@ -530,7 +552,8 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             
             if graph.add_edge(edge):
                 edges_added += 1
-                print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
+                if edges_added <= 5:  # Show first 5 successful edges
+                    print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
 
     print(f"[DEBUG] Edges added: {edges_added}/{len(edges)}")
 
@@ -573,6 +596,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
     print(f"[+] ✅ FINAL RESULT: {graph.get_node_count()} nodes, {edges_added} edges")
     print(f"[+] File: {output_file}")
-    print(f"[+] 🎯 GCP ATTACK SURFACE WITH CUSTOM ICONS COMPLETE")
+    print(f"[+] 🎯 GCP ATTACK SURFACE WITH DYNAMIC PROJECT NAMES COMPLETE")
 
     return output_file
