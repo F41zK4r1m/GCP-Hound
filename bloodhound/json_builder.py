@@ -257,14 +257,14 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     print(f"[*] Phase 5: Building Complete Attack Path Graph with Custom GCP Icons")
     print(f"[DEBUG] Starting export with {len(service_accounts)} SAs, {len(projects)} projects, {len(buckets)} buckets, {len(edges)} edges")
 
-    # ✅ DYNAMIC: Extract project names from enumerated data
+    # DYNAMIC: Extract project names from enumerated data
     discovered_project_names = [p.get('projectId', '').lower() for p in projects if p.get('projectId')]
     print(f"[DEBUG] Discovered projects: {discovered_project_names}")
     
     # Build node mapping with dynamic project names
     node_id_map = {}
 
-    # ✅ UPDATED: Add service accounts with GCPServiceAccount custom node type
+    # UPDATED: Add service accounts with GCPServiceAccount custom node type
     for sa in service_accounts:
         sa_email = sa.get('email', '').lower()
         sa_name = sa.get('displayName', sa_email)
@@ -304,7 +304,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # ✅ UPDATED: Use GCPServiceAccount with beautiful blue user-tie icon
+        # UPDATED: Use GCPServiceAccount with beautiful blue user-tie icon
         sa_node = Node(
             id=sa_email,
             kinds=["GCPServiceAccount", "GCPResource", "GCPHound"],
@@ -312,11 +312,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(sa_node)
         
-        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        # DYNAMIC: Pass discovered project names to normalize_variations
         for variation in normalize_variations(sa_email, discovered_project_names):
             node_id_map[variation] = sa_email
 
-    # ✅ UPDATED: Add projects with GCPProject custom node type
+    # UPDATED: Add projects with GCPProject custom node type
     for project in projects:
         project_id = project.get('projectId', '').lower()
         project_name = project.get('name', project_id)
@@ -348,7 +348,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # ✅ UPDATED: Use GCPProject with beautiful green folder-open icon
+        # UPDATED: Use GCPProject with beautiful green folder-open icon
         proj_node = Node(
             id=project_id,
             kinds=["GCPProject", "GCPResource", "GCPHound"],
@@ -356,11 +356,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(proj_node)
         
-        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        # DYNAMIC: Pass discovered project names to normalize_variations
         for variation in normalize_variations(project_id, discovered_project_names):
             node_id_map[variation] = project_id
 
-    # ✅ UPDATED: Add buckets with GCPBucket custom node type
+    # UPDATED: Add buckets with GCPBucket custom node type
     for bucket in buckets:
         bucket_name = bucket.get('name', '').lower()
         
@@ -392,7 +392,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # ✅ UPDATED: Use GCPBucket with beautiful yellow database icon
+        # UPDATED: Use GCPBucket with beautiful yellow database icon
         bucket_node = Node(
             id=bucket_name,
             kinds=["GCPBucket", "GCPResource", "GCPHound"],
@@ -400,11 +400,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(bucket_node)
         
-        # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+        # DYNAMIC: Pass discovered project names to normalize_variations
         for variation in normalize_variations(bucket_name, discovered_project_names):
             node_id_map[variation] = bucket_name
 
-    # ✅ UPDATED: Add current user with GCPUser custom node type
+    # UPDATED: Add current user with GCPUser custom node type
     if creds:
         from utils.auth import get_active_account
         current_user = get_active_account(creds).lower()
@@ -446,7 +446,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     
     sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
     
-    # ✅ UPDATED: Use GCPUser with beautiful orange user icon
+    # UPDATED: Use GCPUser with beautiful orange user icon
     user_node = Node(
         id=current_user,
         kinds=["GCPUser", "GCPResource", "GCPHound"],
@@ -454,11 +454,11 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     )
     graph.add_node(user_node)
     
-    # ✅ DYNAMIC: Pass discovered project names to normalize_variations
+    # DYNAMIC: Pass discovered project names to normalize_variations
     for variation in normalize_variations(current_user, discovered_project_names):
         node_id_map[variation] = current_user
 
-    # ✅ UPDATED: Add BigQuery dataset with GCPDataset custom node type - DYNAMICALLY
+    # UPDATED: Add BigQuery dataset with GCPDataset custom node type - DYNAMICALLY
     for project in projects:
         project_id = project.get('projectId', '').lower()
         bq_dataset_id = f"{project_id}:ecommerce_data"  # Use actual project ID
