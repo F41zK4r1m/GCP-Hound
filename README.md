@@ -21,7 +21,7 @@
 
 **GCP-Hound** is an open-source security enumeration and privilege escalation discovery tool designed specifically for Google Cloud Platform environments. Built to integrate seamlessly with **BloodHound's OpenGraph** framework, it transforms complex GCP IAM relationships into interactive attack graphs.
 
-### 🎯 Project Background
+### Project Background
 
 This project began as a personal learning journey into GCP-focused penetration testing and red teaming techniques. While GCP-Hound already provides substantial reconnaissance and analysis capabilities, it remains a work-in-progress tool that will continue evolving with new features and improvements over time.
 
@@ -31,7 +31,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 
 ## ✨ Key Features
 
-### **🔥 Current Capabilities (Implemented)**
+### **Current Capabilities (Implemented)**
 - **🔍 Comprehensive GCP Enumeration** - Projects, service accounts, storage buckets, BigQuery datasets
 - **👥 Identity & Access Analysis** - Users, groups, and Google Workspace integration  
 - **🚨 Advanced Privilege Escalation Detection** - Service account key analysis and impersonation chains
@@ -42,7 +42,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 - **🏢 Organizational Structure** - Folder hierarchy and project organization mapping
 - **🎨 Professional BloodHound Integration** - Custom GCP icons and OpenGraph compatibility
 
-### **🚧 Future Enhancements (Planned)**
+### **Future Enhancements (Planned)**
 - [ ] **Pub/Sub Enumeration** - Topics, subscriptions, and messaging analysis
 - [ ] **Cloud Functions Deep Analysis** - Serverless function security assessment
 
@@ -57,7 +57,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 - **OpenGraph Compatibility** - Full BloodHound v8.0+ support
 - **Interactive Visualizations** - Explore attack paths through BloodHound's interface
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 ### **Prerequisites**
 - Python 3.9 or higher
@@ -122,7 +122,7 @@ This step is required only once per BloodHound instance and enables:
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ### **Basic Analysis**
 
@@ -198,7 +198,7 @@ After analysis completes:
 
 ---
 
-## 📊 Enumerated Resources & Relationships
+## Enumerated Resources & Relationships
 
 ### **GCP Node Types**
 
