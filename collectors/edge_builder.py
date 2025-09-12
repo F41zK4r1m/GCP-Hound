@@ -15,7 +15,7 @@ def build_edges(projects, iam_data, users, service_accounts, buckets, secrets):
     iam_edges = build_iam_binding_edges(iam_data, projects)
     edges.extend(iam_edges)
     
-    # ✅ FIXED: Pass iam_data for dynamic privilege analysis
+    # Pass iam_data for dynamic privilege analysis
     sa_edges = build_service_account_edges(service_accounts, projects, iam_data)
     edges.extend(sa_edges)
     
@@ -58,7 +58,7 @@ def analyze_sa_actual_privileges(sa_email, iam_data):
     
     sa_roles = get_sa_roles_from_iam(sa_email, iam_data)
     
-    # ✅ FIXED: Check actual roles, not naming patterns
+    # Check actual roles, not naming patterns
     critical_roles = ['roles/owner', 'roles/iam.securityAdmin', 'roles/iam.organizationAdmin']
     high_roles = ['roles/editor', 'roles/compute.admin', 'roles/storage.admin', 'roles/iam.serviceAccountAdmin']
     medium_roles = ['roles/compute.instanceAdmin', 'roles/storage.objectAdmin', 'roles/bigquery.dataEditor']
@@ -118,7 +118,7 @@ def build_service_account_edges(service_accounts, projects, iam_data=None):
         }
         edges.append(edge)
         
-        # ✅ FIXED: Dynamic privilege analysis based on ACTUAL IAM roles
+        # Dynamic privilege analysis based on ACTUAL IAM roles
         actual_privilege_level = analyze_sa_actual_privileges(sa_email, iam_data)
         
         # Only create high-privilege edge if ACTUALLY high-privileged
@@ -144,7 +144,7 @@ def build_enhanced_privilege_edges(current_user, outbound_permissions):
     """Build detailed privilege edges showing specific allowed operations"""
     edges = []
     
-    # ✅ ENHANCED: More descriptive edge types for specific GCP permissions
+    # More descriptive edge types for specific GCP permissions
     permission_edge_mapping = {
         'storage.objects.create': 'CanCreateStorageObjects',
         'storage.objects.delete': 'CanDeleteStorageObjects',
@@ -186,7 +186,7 @@ def build_enhanced_privilege_edges(current_user, outbound_permissions):
         'secretmanager.versions.access': 'CanAccessSecrets'
     }
     
-    # ✅ ENHANCED: Risk level mapping for permissions
+    # Risk level mapping for permissions
     risk_mapping = {
         'CanImpersonate': 'CRITICAL',
         'CanCreateKeys': 'CRITICAL', 
@@ -367,7 +367,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts)
     """Build enhanced resource ownership and access edges"""
     edges = []
     
-    # ✅ ENHANCED: Project owns buckets with risk assessment
+    # Project owns buckets with risk assessment
     for bucket in buckets:
         bucket_name = bucket.get('name', '').lower()
         project_id = bucket.get('project', '').lower()
@@ -394,7 +394,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts)
             }
             edges.append(edge)
     
-    # ✅ ENHANCED: Project owns secrets with high risk classification
+    # Project owns secrets with high risk classification
     for secret in secrets:
         secret_name = secret.get('name', '').lower()
         project_id = secret.get('project', '').lower()
@@ -431,7 +431,7 @@ def build_privilege_escalation_edges(iam_data, service_accounts):
                 sa_by_project[project_id] = []
             sa_by_project[project_id].append(sa_email)
     
-    # ✅ FIXED: Explicit categorization of permissions
+    # Explicit categorization of permissions
     sa_to_sa_permissions = {
         'iam.serviceAccounts.actAs': 'CanImpersonate',
         'iam.serviceAccounts.getAccessToken': 'CanGenerateAccessToken',
@@ -467,7 +467,7 @@ def build_privilege_escalation_edges(iam_data, service_accounts):
                     continue
                 
                 for perm in escalation_perms:
-                    # ✅ FIXED: Create SA→SA edges for service account permissions
+                    # Create SA→SA edges for service account permissions
                     if perm in sa_to_sa_permissions:
                         edge_kind = sa_to_sa_permissions[perm]
                         risk_level = get_escalation_risk_level(perm)
@@ -493,7 +493,7 @@ def build_privilege_escalation_edges(iam_data, service_accounts):
                                 }
                                 edges.append(edge)
                     
-                    # ✅ FIXED: Create SA→Project edges ONLY for project-level permissions
+                    # Create SA→Project edges ONLY for project-level permissions
                     elif perm in sa_to_project_permissions:
                         edge_kind = sa_to_project_permissions[perm]
                         risk_level = get_escalation_risk_level(perm)
