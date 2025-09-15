@@ -510,11 +510,11 @@ For more authentication details: https://cloud.google.com/docs/authentication
         if args.verbose:
             print(f"\n[*] Phase 5: Building Complete Attack Path Graph")
         try:
-            base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets)
+            base_edges = build_edges(projects, iam_data, [], sacs, buckets, secrets, bigquery_datasets)
             key_access_edges = build_key_access_edges(sacs, key_analysis, user) if key_analysis else []
             secret_access_edges = build_secret_access_edges(secrets, secret_access_analysis, user) if secret_access_analysis else []
             compute_edges = build_compute_instance_edges(instances, instance_escalation_analysis, user) if instances else []
-            bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
+            #bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
             gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
             users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
             
@@ -538,7 +538,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
             folder_edges = build_folder_edges(folders, folder_hierarchy, projects)
             
             # Include logging edges
-            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
+            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
+            #all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
             
             if args.verbose:
                 print(f"[*] Built {len(all_edges)} total attack relationships")
