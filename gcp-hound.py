@@ -21,6 +21,7 @@ from collectors.edge_builder import build_edges
 from collectors.iam_collector import collect_iam, analyze_cross_project_permissions
 from collectors.user_collector import collect_users
 from collectors.folder_collector import collect_folders, build_folder_edges
+from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
 from bloodhound.json_builder import export_bloodhound_json
 from utils.auth import get_google_credentials, get_active_account
 from google.auth import impersonated_credentials
@@ -85,11 +86,26 @@ def setup_impersonation(service_account_email, verbose=False):
         target_credentials.refresh(Request())
         
         if verbose:
-            print(f"[*] ✅ Successfully impersonating: {service_account_email}")
+            print(f"[*] Successfully impersonating: {service_account_email}")
         return target_credentials
     except google.auth.exceptions.GoogleAuthError as e:
-        print(f"[!] ❌ Failed to impersonate {service_account_email}: {e}")
+        print(f"[!] Failed to impersonate {service_account_email}: {e}")
         return None
+
+def print_gcp_hound_banner():
+    """Print the GCP-HOUND ASCII banner"""
+    banner = r"""
+ ██████╗  ██████╗██████╗       ██╗  ██╗ ██████╗ ██╗   ██╗███╗   ██╗██████╗ 
+██╔════╝ ██╔════╝██╔══██╗      ██║  ██║██╔═══██╗██║   ██║████╗  ██║██╔══██╗
+██║  ███╗██║     ██████╔╝█████╗███████║██║   ██║██║   ██║██╔██╗ ██║██║  ██║
+██║   ██║██║     ██╔═══╝ ╚════╝██╔══██║██║   ██║██║   ██║██║╚██╗██║██║  ██║
+╚██████╔╝╚██████╗██║           ██║  ██║╚██████╔╝╚██████╔╝██║ ╚████║██████╔╝
+ ╚═════╝  ╚═════╝╚═╝           ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚═════╝
+"""
+    print(f"\033[96m{banner}\033[0m")
+    print(f"\033[97m🔐 Google Cloud Platform Security Assessment & Attack Surface Discovery\033[0m")
+    print(f"\033[97m🎯 Comprehensive GCP Privilege Escalation Detection & BloodHound Integration\033[0m")
+    print("═" * 79)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -113,12 +129,12 @@ AUTHENTICATION:
   Required Permissions: The authenticated identity needs permissions to:
     • List projects, service accounts, IAM policies
     • Read storage buckets, secrets, compute instances
-    • Access BigQuery datasets, GKE clusters
+    • Access BigQuery datasets, GKE clusters, logging sinks
     • (Optional) Google Workspace Admin API for user/group enumeration
 
 BLOODHOUND INTEGRATION:
   To enable GCP object search in BloodHound UI, run the setup script first:
-    $ python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
+    $ python3 register_gcp_nodes.py --url http://localhost:8080
     
   This registers custom GCP node types and icons (one-time setup per BloodHound instance)
 
@@ -176,11 +192,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
 
     # Print banner unless quiet mode
     if not args.quiet:
+        print_gcp_hound_banner()
         print()
-        print("🔐 GCP-Hound - Google Cloud Platform Security Assessment Tool")
-        print("=" * 80)
-        print("🎯 Comprehensive GCP Attack Surface Analysis & Privilege Escalation Detection")
-        print("=" * 80)
         
         if args.verbose:
             print(f"[*] Verbose mode: Enabled")
@@ -248,7 +261,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             handle_api_error(e, "API capability assessment", args)
             capabilities = {}
 
-        # EARLY Admin Status Check with conditional logic
+        # Early Admin Status Check with conditional logic
         try:
             admin_status = check_workspace_admin_status(creds)
             if args.verbose:
@@ -320,7 +333,16 @@ For more authentication details: https://cloud.google.com/docs/authentication
                 gke_clusters = collect_gke_clusters(creds, projects)
             except Exception as e:
                 handle_api_error(e, "GKE enumeration", args)
-        
+
+        log_sinks, log_buckets, log_metrics = [], [], []
+        if capabilities.get("Logging"):
+            try:
+                log_sinks, log_buckets, log_metrics = collect_logging_resources(creds, projects)
+                if args.verbose:
+                    print(f"[+] Found {len(log_sinks)} log sinks, {len(log_buckets)} log buckets, {len(log_metrics)} log metrics")
+            except Exception as e:
+                handle_api_error(e, "Logging enumeration", args)
+
         # Phase 3A: IAM collection
         if args.verbose:
             print(f"\n[*] Phase 3A: IAM Policy Enumeration")
@@ -350,13 +372,16 @@ For more authentication details: https://cloud.google.com/docs/authentication
             if secrets: summary_items.append(f"{len(secrets)} secrets")
             if instances: summary_items.append(f"{len(instances)} instances")
             if gke_clusters: summary_items.append(f"{len(gke_clusters)} clusters")
+            if log_sinks or log_buckets or log_metrics:
+                total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
+                summary_items.append(f"{total_logging} logging resources")
             
             if summary_items:
                 print(f"[+] Found: {', '.join(summary_items)}")
             else:
                 print(f"[!] Limited resource access - enable APIs or use higher privileges")
 
-        # CONDITIONAL Users/Groups enumeration
+        # Conditional Users/Groups enumeration
         users, groups, group_memberships = [], [], []
         if has_admin_sdk_access:
             try:
@@ -450,9 +475,26 @@ For more authentication details: https://cloud.google.com/docs/authentication
             except Exception as e:
                 handle_api_error(e, "User/group escalation analysis", args)
 
-        # Phase 4G: Comprehensive Privilege Escalation Analysis
+        logging_analysis = []
+        if (log_sinks or log_buckets or log_metrics) and sacs:
+            if args.verbose:
+                print(f"\n[*] Phase 4G: Logging Privilege Analysis")
+            try:
+                logging_analysis = analyze_logging_access_privileges(
+                    log_sinks, 
+                    log_buckets, 
+                    log_metrics, 
+                    sacs
+                )
+                if args.verbose:
+                    total_resources = len(log_sinks) + len(log_buckets) + len(log_metrics)
+                    print(f"[*] Analyzed logging privileges for {total_resources} logging resources")
+            except Exception as e:
+                handle_api_error(e, "Logging privilege analysis", args)
+
+        # Phase 4H: Comprehensive Privilege Escalation Analysis
         if args.verbose:
-            print(f"\n[*] Phase 4G: 🚨 {colorize('COMPREHENSIVE PRIVILEGE ESCALATION ANALYSIS', TerminalColors.BOLD + TerminalColors.RED)}")
+            print(f"\n[*] Phase 4H: 🚨 {colorize('COMPREHENSIVE PRIVILEGE ESCALATION ANALYSIS', TerminalColors.BOLD + TerminalColors.RED)}")
         escalation_results = []
         try:
             privesc_analyzer = GCPPrivilegeEscalationAnalyzer(creds)
@@ -476,16 +518,32 @@ For more authentication details: https://cloud.google.com/docs/authentication
             gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
             users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
             
+            logging_edges = []
+            if log_sinks or log_buckets or log_metrics:
+                try:
+                    logging_edges = build_logging_edges(
+                        log_sinks,
+                        log_buckets, 
+                        log_metrics,
+                        logging_analysis,
+                        user
+                    )
+                except Exception as e:
+                    handle_api_error(e, "Logging edge building", args)
+            
             escalation_edges = []
             if escalation_results and hasattr(privesc_analyzer, 'build_escalation_edges'):
                 escalation_edges = privesc_analyzer.build_escalation_edges(user)
                 
             folder_edges = build_folder_edges(folders, folder_hierarchy, projects)
             
-            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + escalation_edges + folder_edges
+            # Include logging edges
+            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
             
             if args.verbose:
                 print(f"[*] Built {len(all_edges)} total attack relationships")
+                if logging_edges:
+                    print(f"[*] Including {len(logging_edges)} logging-specific edges")
         except Exception as e:
             handle_api_error(e, "Attack graph building", args)
             all_edges = []
@@ -498,7 +556,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
             os.makedirs(args.output)
         
         try:
-            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data)
+            output_file = export_bloodhound_json([], users, projects, groups, sacs, buckets, secrets, all_edges, creds, iam_data, log_sinks, log_buckets, log_metrics, bigquery_datasets)
         except Exception as e:
             handle_api_error(e, "BloodHound export", args)
             output_file = None
@@ -531,6 +589,12 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print(f"    Compute Instances: {len(instances)}")
         print(f"    BigQuery Datasets: {len(bigquery_datasets)}")
         print(f"    GKE Clusters: {len(gke_clusters)}")
+        total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
+        print(f"    Logging Resources: {total_logging}")
+        if args.verbose and total_logging > 0:
+            print(f"      - Log Sinks: {len(log_sinks)}")
+            print(f"      - Log Buckets: {len(log_buckets)}")
+            print(f"      - Log Metrics: {len(log_metrics)}")
         print(f"    Users: {len(users)}")
         print(f"    Groups: {len(groups)}")
         if args.verbose:
@@ -547,6 +611,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
         print()
         print(f"🔗 {colorize('ATTACK GRAPH:', TerminalColors.CYAN)}")
         print(f"    {colorize(f'Total BloodHound Attack Edges: {len(all_edges)}', TerminalColors.BOLD)}")
+        if logging_edges:
+            print(f"    {colorize(f'Logging Attack Edges: {len(logging_edges)}', TerminalColors.BOLD)}")
         if critical_edges > 0:
             print(f"    {colorize(f'🚨 CRITICAL Attack Paths: {critical_edges}', TerminalColors.RED + TerminalColors.BOLD)}")
         
@@ -564,9 +630,11 @@ For more authentication details: https://cloud.google.com/docs/authentication
             print(f"    2. Run queries to visualize attack paths")
             if critical_edges > 0:
                 print(f"    3. Focus on CRITICAL risk findings first")
+            if logging_edges:
+                print(f"    4. Examine logging-based privilege escalation paths")
             print()
             print(f"    💎 {colorize('Enable GCP Search & Icons:', TerminalColors.CYAN)}")
-            print(f"       python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password")
+            print(f"       python3 register_gcp_nodes.py --url http://localhost:8080")
             print(f"       (One-time setup to make GCP objects searchable in BloodHound UI)")
         else:
             print(f"    1. Check permissions and re-run with -d flag")
