@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.0",
-    "description": "GCP-Hound Complete Custom Node Types - All 23 nodes including network, identity, and security"
+    "description": "GCP-Hound Complete Custom Node Types - All nodes including logging resources"
   },
   "custom_kinds": {
     "ServiceAccount": {
@@ -11,7 +11,13 @@
         "color": "#4CAF50"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "email", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "email",
+        "objectid",
+        "platform"
+      ]
     },
     "Project": {
       "icon": {
@@ -20,7 +26,13 @@
         "color": "#FF5722"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "projectId", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "projectId",
+        "objectid",
+        "platform"
+      ]
     },
     "Bucket": {
       "icon": {
@@ -29,7 +41,12 @@
         "color": "#2196F3"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "Dataset": {
       "icon": {
@@ -38,7 +55,13 @@
         "color": "#9C27B0"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "datasetId", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "datasetId",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPFunction": {
       "icon": {
@@ -47,7 +70,12 @@
         "color": "#673AB7"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPPubSubTopic": {
       "icon": {
@@ -56,7 +84,12 @@
         "color": "#607D8B"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPOrganization": {
       "icon": {
@@ -65,7 +98,12 @@
         "color": "#424242"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPFolder": {
       "icon": {
@@ -74,7 +112,12 @@
         "color": "#8BC34A"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPProject": {
       "icon": {
@@ -83,7 +126,13 @@
         "color": "#34A853"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "projectId", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "projectId",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPBucket": {
       "icon": {
@@ -92,7 +141,12 @@
         "color": "#FBBC04"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPInstance": {
       "icon": {
@@ -101,7 +155,13 @@
         "color": "#9C27B0"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "zone", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "zone",
+        "platform"
+      ]
     },
     "GCPCluster": {
       "icon": {
@@ -110,7 +170,13 @@
         "color": "#00BCD4"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "location", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "location",
+        "platform"
+      ]
     },
     "GCPSQLInstance": {
       "icon": {
@@ -119,7 +185,12 @@
         "color": "#795548"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPServiceAccount": {
       "icon": {
@@ -128,7 +199,14 @@
         "color": "#4285F4"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "email", "objectid", "short_name", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "email",
+        "objectid",
+        "short_name",
+        "platform"
+      ]
     },
     "GCPDataset": {
       "icon": {
@@ -137,7 +215,13 @@
         "color": "#EA4335"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "datasetId", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "datasetId",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPSecret": {
       "icon": {
@@ -146,7 +230,12 @@
         "color": "#FF6D00"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPUser": {
       "icon": {
@@ -155,7 +244,13 @@
         "color": "#FF9800"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "email", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "email",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPGroup": {
       "icon": {
@@ -164,7 +259,13 @@
         "color": "#FF5722"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "email", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "email",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPRole": {
       "icon": {
@@ -173,7 +274,13 @@
         "color": "#E91E63"
       },
       "display_property": "title",
-      "searchable_properties": ["name", "title", "objectid", "stage", "platform"]
+      "searchable_properties": [
+        "name",
+        "title",
+        "objectid",
+        "stage",
+        "platform"
+      ]
     },
     "GCPServiceAccountKey": {
       "icon": {
@@ -182,7 +289,13 @@
         "color": "#3F51B5"
       },
       "display_property": "keyId",
-      "searchable_properties": ["keyId", "keyType", "keyAlgorithm", "objectid", "platform"]
+      "searchable_properties": [
+        "keyId",
+        "keyType",
+        "keyAlgorithm",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPNetwork": {
       "icon": {
@@ -191,7 +304,12 @@
         "color": "#00BCD4"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPFirewall": {
       "icon": {
@@ -200,7 +318,12 @@
         "color": "#FF5722"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
     },
     "GCPKMSKey": {
       "icon": {
@@ -209,7 +332,57 @@
         "color": "#795548"
       },
       "display_property": "displayname",
-      "searchable_properties": ["name", "displayname", "objectid", "platform"]
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "platform"
+      ]
+    },
+    "GCPLogSink": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "stream",
+        "color": "#8B5CF6"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "destination",
+        "platform"
+      ]
+    },
+    "GCPLogBucket": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "inbox",
+        "color": "#06B6D4"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "location",
+        "platform"
+      ]
+    },
+    "GCPLogMetric": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "chart-line",
+        "color": "#F59E0B"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "objectid",
+        "filter",
+        "platform"
+      ]
     }
   }
 }
