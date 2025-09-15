@@ -28,7 +28,7 @@ def safe_add_edge(edges, start_id, end_id, kind, properties):
     edges.append(edge)
     return True
 
-def build_edges(projects, iam_data, users, service_accounts, buckets, secrets, debug=False):
+def build_edges(projects, iam_data, users, service_accounts, buckets, secrets, bigquery_datasets=None, debug=False):
     """
     Build comprehensive attack path edges from collected GCP data.
     Returns list of edges for BloodHound visualization.
@@ -41,6 +41,10 @@ def build_edges(projects, iam_data, users, service_accounts, buckets, secrets, d
         return edges
 
     print(f"[*] Edge Builder: Processing {len(projects)} projects, {len(iam_data)} IAM policies")
+    
+    # Print BigQuery datasets info if available
+    if bigquery_datasets:
+        print(f"[*] Edge Builder: Including {len(bigquery_datasets)} BigQuery datasets")
 
     # Build edges from IAM bindings with validation
     iam_edges = build_iam_binding_edges(iam_data, projects, debug)
@@ -52,8 +56,8 @@ def build_edges(projects, iam_data, users, service_accounts, buckets, secrets, d
     edges.extend(sa_edges)
     stats["created"] += len(sa_edges)
 
-    # Build resource ownership edges
-    resource_edges = build_resource_ownership_edges(projects, buckets, secrets, service_accounts, debug)
+    # Build resource ownership edges (now includes BigQuery datasets)
+    resource_edges = build_resource_ownership_edges(projects, buckets, secrets, service_accounts, bigquery_datasets, debug)
     edges.extend(resource_edges)
     stats["created"] += len(resource_edges)
 
@@ -110,7 +114,7 @@ def analyze_sa_actual_privileges(sa_email, iam_data):
         return "LIMITED"
 
 def get_privilege_reason(sa_email, iam_data):
-    """Get human-readable reason why service account is considered high-privilege"""
+    """Get human-readable reason why service account is considered high-privilege (still need to work on this)"""
     roles = get_sa_roles_from_iam(sa_email, iam_data)
 
     critical_roles = [r for r in roles if r in ['roles/owner', 'roles/iam.securityAdmin']]
@@ -319,12 +323,13 @@ def build_iam_binding_edges(iam_data, projects, debug=False):
         print(f"[WARNING] Skipped {edges_skipped} invalid IAM binding edges")
     return edges
 
-def build_resource_ownership_edges(projects, buckets, secrets, service_accounts, debug=False):
-    """Build resource ownership edges with validation"""
+def build_resource_ownership_edges(projects, buckets, secrets, service_accounts, bigquery_datasets=None, debug=False):
+    """Build resource ownership edges with validation - NOW INCLUDES BIGQUERY DATASETS"""
     edges = []
     edges_created = 0
     edges_skipped = 0
 
+    # Existing bucket logic
     for bucket in buckets:
         bucket_name = bucket.get('name', '').lower()
         project_id = bucket.get('project', '').lower()
@@ -357,6 +362,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts,
             else:
                 edges_skipped += 1
 
+    # Existing secrets logic
     for secret in secrets:
         secret_name = secret.get('name', '').lower()
         project_id = secret.get('project', '').lower()
@@ -382,6 +388,39 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts,
                     print(f"[DEBUG] ✅ Secret ownership: {project_id} -> {secret_name}")
             else:
                 edges_skipped += 1
+
+    # BigQuery dataset logic
+    if bigquery_datasets:
+        for dataset in bigquery_datasets:
+            dataset_id = dataset.get('dataset_id', '')
+            project_id = dataset.get('project', '').lower()
+            
+            if dataset_id and project_id:
+                # Use the SAME ID format your json_builder uses for dataset nodes
+                canonical_dataset_id = f"gcp-bq-dataset-{project_id}-{dataset_id}".replace('_', '-').lower()
+                
+                success = safe_add_edge(
+                    edges=edges,
+                    start_id=project_id,
+                    end_id=canonical_dataset_id,
+                    kind="OwnsDataset",
+                    properties={
+                        "source": "resource_ownership",
+                        "resourceType": "BigQuery Dataset", 
+                        "riskLevel": dataset.get('riskLevel', 'MEDIUM'),
+                        "tableCount": dataset.get('table_count', 0),
+                        "location": dataset.get('location', 'Unknown'),
+                        "fullDatasetId": dataset.get('full_dataset_id', f"{project_id}:{dataset_id}"),
+                        "description": f"Project {project_id} owns BigQuery dataset {dataset_id}"
+                    }
+                )
+                
+                if success:
+                    edges_created += 1
+                    if debug:
+                        print(f"[DEBUG] ✅ Dataset ownership: {project_id} -> {canonical_dataset_id}")
+                else:
+                    edges_skipped += 1
 
     print(f"[+] Built {edges_created} resource ownership edges")
     if edges_skipped > 0:
@@ -443,7 +482,7 @@ def get_attack_vector_for_permission(permission):
     return attack_vectors.get(permission, 'Resource Manipulation')
 
 def get_mitre_technique_for_permission(permission):
-    """Map GCP permissions to MITRE ATT&CK techniques"""
+    """Map GCP permissions to MITRE ATT&CK techniques (experimental for now, will work on enchancement later)"""
     mitre_mapping = {
         'iam.serviceAccounts.actAs': 'T1078.004',
         'iam.serviceAccounts.getAccessToken': 'T1078.004',
