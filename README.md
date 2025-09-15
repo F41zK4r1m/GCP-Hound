@@ -280,7 +280,7 @@ MATCH (n:GCPResource)-[r]->(m:GCPResource)
 RETURN n, r, m LIMIT 100
 ```
 
-<img width="1776" height="669" alt="image" src="https://github.com/user-attachments/assets/4389b377-567f-4d2f-8f53-80babc19cee5" />
+<img width="1439" height="694" alt="image" src="https://github.com/user-attachments/assets/0a64be95-00f1-4f28-9b21-5b75aa5950d0" />
 
 
 #### More example queries
