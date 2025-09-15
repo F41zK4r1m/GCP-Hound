@@ -171,7 +171,7 @@ def filter_edges_for_bloodhound(edges):
 
 def validate_and_clean_graph_data(nodes, edges, args=None):
     """
-    🔧 CRITICAL FIX: Validate nodes and edges before OpenGraph processing to prevent empty ID errors
+    Validate nodes and edges before OpenGraph processing to prevent empty ID errors
     """
     print("[DEBUG] Starting graph validation...")
     
@@ -203,7 +203,7 @@ def validate_and_clean_graph_data(nodes, edges, args=None):
     return valid_edges
 
 def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_data=None):
-    """✅ FIXED: Create edges for log stream access - ONLY for accounts with actual logging permissions"""
+    """Create edges for log stream access - ONLY for accounts with actual logging permissions"""
     edges = []
     
     for sink in log_sinks:
@@ -236,7 +236,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                 if not sa_email:
                     continue
                 
-                # ✅ CRITICAL FIX: Check if SA actually has logging permissions
+                # CRITICAL FIX: Check if SA actually has logging permissions
                 sa_roles = get_sa_roles_from_iam(sa_email, iam_data) if iam_data else []
                 
                 # Only SAs with these roles can access logging
@@ -248,7 +248,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                 
                 has_logging_access = any(role in logging_roles for role in sa_roles)
                 
-                # ✅ ONLY create edge if SA has actual logging permissions
+                # ONLY create edge if SA has actual logging permissions
                 if has_logging_access:
                     sa_edge = {
                         'start': {'value': sa_email},
@@ -268,7 +268,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     return edges
 
 def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None):
-    """✅ FIXED: Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
+    """FIXED: Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph(source_kind="GCPHound")
     
     print(f"[*] Phase 5: Building Complete Attack Path Graph with Real Data Only")
@@ -284,6 +284,9 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         total_logging = len(log_sinks) + len(log_buckets) + len(log_metrics)
         print(f"[DEBUG] Including {total_logging} logging resources ({len(log_sinks)} sinks, {len(log_buckets)} buckets, {len(log_metrics)} metrics)")
 
+    if bigquery_datasets:
+        print(f"[DEBUG] Including {len(bigquery_datasets)} BigQuery datasets")
+
     # Extract project names from enumerated data
     discovered_project_names = [p.get('projectId', '').lower() for p in projects if p.get('projectId')]
     
@@ -294,7 +297,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for sa in service_accounts:
         sa_email = sa.get('email', '').lower()
         
-        # ✅ VALIDATION: Skip if no valid email
+        # VALIDATION: Skip if no valid email
         if not sa_email or not sa_email.strip():
             print(f"[WARNING] Skipping service account with invalid email: {sa}")
             continue
@@ -353,7 +356,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for project in projects:
         project_id = project.get('projectId', '').lower()
         
-        # ✅ VALIDATION: Skip if no valid project ID
+        # VALIDATION: Skip if no valid project ID
         if not project_id or not project_id.strip():
             print(f"[WARNING] Skipping project with invalid ID: {project}")
             continue
@@ -402,7 +405,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for bucket in buckets:
         bucket_name = bucket.get('name', '').lower()
         
-        # ✅ VALIDATION: Skip if no valid bucket name
+        # VALIDATION: Skip if no valid bucket name
         if not bucket_name or not bucket_name.strip():
             print(f"[WARNING] Skipping bucket with invalid name: {bucket}")
             continue
@@ -446,33 +449,36 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(bucket_name, discovered_project_names):
             node_id_map[variation] = bucket_name
 
-    # Add ONLY enumerated BigQuery datasets (no fake ones)
+    # CRITICAL FIX: BigQuery datasets with canonical ID format
     for dataset in bigquery_datasets:
-        dataset_id = dataset.get('objectId', dataset.get('datasetId', ''))
+        dataset_id = dataset.get('dataset_id', '')
+        project_id = dataset.get('project', '').lower()
         
-        # ✅ VALIDATION: Skip if no valid dataset ID
-        if not dataset_id or not dataset_id.strip():
-            print(f"[WARNING] Skipping dataset with invalid ID: {dataset}")
+        # VALIDATION: Skip if no valid dataset or project info
+        if not project_id or not dataset_id:
+            print(f"[WARNING] Skipping dataset with missing project/dataset info: {dataset}")
             continue
-            
-        dataset_name = dataset.get('name', dataset.get('datasetId', ''))
+        
+        # CRITICAL FIX: Use the EXACT same canonical ID format as edge_builder
+        canonical_dataset_id = f"gcp-bq-dataset-{project_id}-{dataset_id}".replace('_', '-').lower()
         
         clean_properties = {
-            "name": dataset_name,
-            "displayname": dataset.get('displayName', dataset_name),
-            "objectid": dataset_id,
-            "datasetId": dataset.get('datasetId', dataset_name),
+            "name": dataset_id,
+            "displayname": dataset.get('friendly_name', dataset_id),
+            "objectid": canonical_dataset_id,
+            "datasetId": dataset_id,
             "platform": "GCP",
-            "project": dataset.get('project', 'Unknown'),
-            "description": f"BigQuery Dataset: {dataset_name}",
+            "project": project_id,
+            "description": f"BigQuery Dataset: {dataset_id}",
             
             # Real GCP-specific metadata from API
             "gcpResourceType": "BigQuery Dataset",
             "gcpDatasetType": "BigQuery",
-            "gcpTableCount": dataset.get('tableCount', 'Unknown'),
+            "gcpTableCount": dataset.get('table_count', 'Unknown'),
             "location": dataset.get('location', 'Unknown'),
-            "creationTime": dataset.get('creationTime', 'Unknown'),
-            "lastModifiedTime": dataset.get('lastModifiedTime', 'Unknown'),
+            "creationTime": dataset.get('created', 'Unknown'),
+            "lastModifiedTime": dataset.get('modified', 'Unknown'),
+            "fullDatasetId": dataset.get('full_dataset_id', f"{project_id}:{dataset_id}"),
             
             # Real security analysis
             "riskLevel": dataset.get('riskLevel', 'Unknown'),
@@ -486,21 +492,46 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # Create node with canonical ID
         bq_node = Node(
-            id=dataset_id,
+            id=canonical_dataset_id,
             kinds=["GCPDataset", "GCPResource", "GCPHound"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bq_node)
         
+        # COMPREHENSIVE ID MAPPING - Map all possible variations
+        # Standard variations
         for variation in normalize_variations(dataset_id, discovered_project_names):
-            node_id_map[variation] = dataset_id
+            node_id_map[variation] = canonical_dataset_id
+            
+        # Project:dataset format variations  
+        project_dataset_variations = [
+            f"{project_id}:{dataset_id}",
+            f"{project_id}_{dataset_id}",
+            f"{project_id}-{dataset_id}",
+            f"{project_id}.{dataset_id}"
+        ]
+        
+        for variation in project_dataset_variations:
+            node_id_map[variation.lower()] = canonical_dataset_id
+            # Also normalize this variation
+            for sub_variation in normalize_variations(variation.lower(), discovered_project_names):
+                node_id_map[sub_variation] = canonical_dataset_id
+        
+        # Map the canonical ID to itself
+        node_id_map[canonical_dataset_id] = canonical_dataset_id
+        
+        # CRITICAL DEBUG OUTPUT
+        print(f"[DEBUG] ✅ Created dataset node with canonical ID: {canonical_dataset_id}")
+        print(f"[DEBUG] ✅ From dataset: project='{project_id}', dataset_id='{dataset_id}'")
+        print(f"[DEBUG] ✅ Mapped {len(project_dataset_variations) + len(normalize_variations(dataset_id, discovered_project_names))} variations to canonical ID")
 
-    # ✅ FIXED: Add logging resource nodes using ONLY real enumerated data (keep as GCPLogSink for icons)
+    # Add logging resource nodes using ONLY real enumerated data (keep as GCPLogSink for icons)
     for sink in log_sinks:
         sink_id = sink.get('objectId', sink.get('name', ''))
         
-        # ✅ VALIDATION: Skip if no valid sink ID
+        # VALIDATION: Skip if no valid sink ID
         if not sink_id or not sink_id.strip():
             print(f"[WARNING] Skipping log sink with invalid ID: {sink}")
             continue
@@ -555,7 +586,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for bucket in log_buckets:
         bucket_id = bucket.get('objectId', bucket.get('name', ''))
         
-        # ✅ VALIDATION: Skip if no valid bucket ID
+        # VALIDATION: Skip if no valid bucket ID
         if not bucket_id or not bucket_id.strip():
             print(f"[WARNING] Skipping log bucket with invalid ID: {bucket}")
             continue
@@ -599,7 +630,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     for metric in log_metrics:
         metric_id = metric.get('objectId', metric.get('name', ''))
         
-        # ✅ VALIDATION: Skip if no valid metric ID
+        # VALIDATION: Skip if no valid metric ID
         if not metric_id or not metric_id.strip():
             print(f"[WARNING] Skipping log metric with invalid ID: {metric}")
             continue
@@ -697,20 +728,33 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(current_user, discovered_project_names):
             node_id_map[variation] = current_user
 
-    print(f"[DEBUG] Nodes added: {graph.get_node_count()}")
-    print(f"[DEBUG] Total ID mappings: {len(node_id_map)}")
+    # Debug output for comprehensive node mapping validation
+    print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
+    print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
+    
+    # Check the problematic dataset nodes now exist
+    test_nodes = ['data-papouille', 'gcp-bq-dataset-data-papouille-ecommerce-data']
+    for test_node in test_nodes:
+        exists_in_graph = test_node in graph.nodes
+        exists_in_map = test_node in node_id_map
+        print(f"[DEBUG] Node '{test_node}' in graph.nodes: {exists_in_graph}")
+        print(f"[DEBUG] Node '{test_node}' in node_id_map: {exists_in_map}")
+        if exists_in_map:
+            mapped_id = node_id_map[test_node]
+            mapped_exists = mapped_id in graph.nodes
+            print(f"[DEBUG] '{test_node}' maps to: '{mapped_id}' (in graph: {mapped_exists})")
 
-    # ✅ FIXED: Create logging access edges with IAM data
+    # Create logging access edges with IAM data
     logging_edges = create_logging_access_edges(log_sinks, current_user, service_accounts, iam_data)
     edges.extend(logging_edges)
 
-    # ✅ ADD EDGE FILTERING HERE - THE MAIN FIX
+    # ADD EDGE FILTERING HERE - THE MAIN FIX
     edges = filter_edges_for_bloodhound(edges)
 
-    # ✅ CRITICAL FIX: Validate edges before processing
+    # Validate edges before processing
     edges = validate_and_clean_graph_data(graph.nodes, edges, None)
 
-    # ✅ CRITICAL FIX: Block SA→Project edges for SA-scoped permissions
+    # Block SA→Project edges for SA-scoped permissions
     
     # Build edge variations for validation
     all_sa_variations = set()
@@ -740,7 +784,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         end_id = edge_data.get("end", {}).get("value", "").lower()
         kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
         
-        # ✅ ADDITIONAL VALIDATION: Skip if either ID is empty
+        # ADDITIONAL VALIDATION: Skip if either ID is empty
         if not start_id or not start_id.strip() or not end_id or not end_id.strip():
             skipped_edges += 1
             print(f"[DEBUG] ❌ Skipping edge with empty ID: start='{start_id}', end='{end_id}'")
@@ -749,13 +793,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         actual_start = node_id_map.get(start_id, start_id)
         actual_end = node_id_map.get(end_id, end_id)
         
-        # ✅ CRITICAL FIX: Block SA→Project edges for SA-scoped permissions
+        # CRITICAL FIX: Block SA→Project edges for SA-scoped permissions
         if kind in sa_scoped_edge_types and end_id in all_project_variations:
             skipped_edges += 1
             print(f"[DEBUG] ❌ Blocking invalid SA→Project edge: {start_id} --[{kind}]-> {end_id}")
             continue
             
-        # ✅ Also block if target is not a valid node
+        # Also block if target is not a valid node
         if actual_start not in graph.nodes or actual_end not in graph.nodes:
             skipped_edges += 1
             print(f"[DEBUG] ❌ Skipping edge to missing node: {actual_start} -> {actual_end}")
