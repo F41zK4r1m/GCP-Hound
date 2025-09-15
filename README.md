@@ -32,25 +32,27 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 ## ✨ Key Features
 
 ### **Current Capabilities (Implemented)**
-- **🔍 Comprehensive GCP Enumeration** - Projects, service accounts, storage buckets, BigQuery datasets
-- **👥 Identity & Access Analysis** - Users, groups, and Google Workspace integration  
-- **🚨 Advanced Privilege Escalation Detection** - Service account key analysis and impersonation chains
-- **☸️ Container Security** - GKE cluster enumeration and Kubernetes RBAC analysis
-- **🔐 Secret Management** - Secret Manager enumeration and access analysis
-- **💻 Compute Infrastructure** - VM instances, disks, and compute resource discovery
-- **🌐 Network Mapping** - VPC, subnets, firewall rules, and network topology
-- **🏢 Organizational Structure** - Folder hierarchy and project organization mapping
-- **🎨 Professional BloodHound Integration** - Custom GCP icons and OpenGraph compatibility
+* 🔍 **Comprehensive GCP Enumeration** – Projects, service accounts, storage buckets, BigQuery datasets, logging resources
+* 👥 **Identity & Access Analysis** – Users, groups, Google Workspace integration
+* 🚨 **Advanced Privilege Escalation Detection** – Service account key analysis, impersonation chains, and log access paths
+* ☸️ **Container Security** – GKE cluster enumeration and Kubernetes RBAC analysis
+* 🔐 **Secret Management** – Secret Manager enumeration and access analysis
+* 💻 **Compute Infrastructure** – VM instances, disks, and compute resource discovery
+* 🌐 **Network Mapping** – VPC, subnets, firewall rules, and network topology
+* 🏢 **Organizational Structure** – Folder hierarchy and project organization mapping
+* 📚 **Logging Resource Discovery** – Log sinks, log buckets, and log metrics with attack edge modeling
+* 🎨 **Professional BloodHound Integration** – Custom GCP icons and OpenGraph compatibility
 
 ### **Future Enhancements (Planned)**
 - [ ] **Pub/Sub Enumeration** - Topics, subscriptions, and messaging analysis
 - [ ] **Cloud Functions Deep Analysis** - Serverless function security assessment
 
 ### 🚨 **Advanced Privilege Escalation Detection**
-- **Service Account Key Analysis** - Detect dangerous key creation/management permissions
-- **Impersonation Chain Discovery** - Map cross-account privilege escalation paths
-- **Risk-Based Scoring** - CRITICAL, HIGH, MEDIUM risk classifications (Still working on it to make it perfect)
-- **Multi-Hop Attack Chains** - Complex privilege escalation sequences
+- Service Account Key Analysis – Detect dangerous key creation/management permissions
+- Impersonation Chain Discovery – Map cross-account privilege escalation paths
+- Log Privilege Analysis – Detect paths allowing unintended or CRITICAL access to logging resources (sinks, buckets, metrics, log streams)
+- Risk-Based Scoring – CRITICAL, HIGH, MEDIUM risk classifications (currently not 100% accurate)
+- Multi-Hop Attack Chains – Complex privilege escalation and log access paths
 
 ### 🎨 **Professional BloodHound Integration**
 - **Custom GCP Icons** - Beautiful, distinct icons for each GCP resource type
@@ -179,12 +181,12 @@ python3 gcp-hound.py -q
 
 GCP-Hound performs analysis in **6 comprehensive phases**:
 
-1. **🔍 Authentication & Project Discovery** - Validate credentials and discover accessible projects
-2. **📊 API Capability Assessment** - Determine available GCP APIs and permissions
-3. **🗂️ Resource Enumeration** - Discover service accounts, storage, BigQuery, GKE, and compute resources
-4. **🔐 Privilege Analysis** - Analyze service account permissions and key access capabilities
-5. **🚨 Privilege Escalation Detection** - Identify critical attack paths and escalation opportunities  
-6. **📈 BloodHound Export** - Generate OpenGraph JSON with custom GCP visualizations
+1. 🔍 **Authentication & Project Discovery** – Validate credentials and discover projects
+2. 📊 **API Capability Assessment** – Determine available GCP APIs and permissions
+3. 🗂️ **Resource Enumeration** – Discover service accounts, storage, BigQuery, GKE, compute, and logging resources
+4. 🔐 **Privilege Analysis** – Analyze service account permissions, logging access, and key access capabilities
+5. 🚨 **Privilege Escalation Detection** – Identify critical attack paths and escalation opportunities, including logging-based risks
+6. 📈 **BloodHound Export** – Generate OpenGraph JSON with custom GCP visualizations
 
 ### **BloodHound Import**
 
@@ -204,14 +206,16 @@ After analysis completes:
 
 GCP-Hound currently enumerates **23 distinct GCP node types** across the Google Cloud ecosystem:
 
-| Category | Node Types | Description |
-|----------|------------|-------------|
-| **Identity & Access** | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey` | User identities, groups, and service accounts |
-| **Organization** | `GCPProject`, `GCPFolder`, `GCPOrganization` | Organizational structure and hierarchy |
-| **Compute & Containers** | `GCPInstance`, `GCPCluster`, `GCPNode` | Compute Engine VMs and GKE clusters |
-| **Storage & Data** | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction` | Storage, BigQuery, and Secret Manager |
-| **Networking** | `GCPNetwork`, `GCPVPC`, `GCPSubnet`, `GCPFirewall`, `GCPRole` | Network infrastructure and security |
-| **Additional Services** | `GCPPubSubTopic`, `GCPCloudFunction`, `GCPKMSKey` | Messaging, serverless, and encryption |
+| Category                  | Node Types                                               | Description                                            |
+|---------------------------|---------------------------------------------------------|--------------------------------------------------------|
+| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`    | User identities, groups, and service accounts          |
+| **Organization**          | `GCPProject`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
+| **Compute & Containers**  | `GCPInstance`, `GCPCluster`, `GCPNode`                                 | Compute Engine VMs and GKE clusters                    |
+| **Storage & Data**        | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction`                 | Storage, BigQuery, Secret Manager, Cloud Functions     |
+| **Networking**            | `GCPNetwork`, `GCPVPC`, `GCPSubnet`, `GCPFirewall`, `GCPRole`         | Network infrastructure and roles                       |
+| **Additional Services**   | `GCPPubSubTopic`, `GCPCloudFunction`, `GCPKMSKey`                     | Messaging, serverless, and encryption                  |
+| **Logging & Monitoring**  | `GCPLogSink`, `GCPLogBucket`, `GCPLogMetric`                          | Logging sinks, log buckets, and log metrics            |
+
 
 *Note: While `GCPPubSubTopic` is registered as a node type, **Pub/Sub enumeration is not yet implemented** in the current collectors.*
 
@@ -241,11 +245,14 @@ GCP-Hound focuses on discovering privilege escalation opportunities through:
 ## 🎨 BloodHound Visualization
 
 ### **Custom GCP Node Types**
-- 🔐 **Service Accounts** - Green user-secret icons
-- 📁 **Projects** - Red folder-open icons  
-- 🗄️ **Storage Buckets** - Blue database icons
-- 📊 **BigQuery Datasets** - Purple chart-bar icons
-- 👤 **Users** - Brown user-circle icons
+- 🔐 **Service Accounts** – Green user-secret icon
+- 📁 **Projects** – Red folder-open icon
+- 🗄️ **Storage Buckets** – Blue database icon
+- 📊 **BigQuery Datasets** – Purple chart-bar icon
+- 👤 **Users** – Brown user-circle icon
+- 🟣 **Log Sinks** – Purple stream icon
+- 📨 **Log Buckets** – Teal inbox icon
+- 📈 **Log Metrics** – Gold chart-line icon
 
 ### **Attack Relationship Types**
 - **CanCreateKeys** - CRITICAL service account key creation
@@ -263,7 +270,7 @@ WHERE r.riskLevel = "CRITICAL"
 RETURN n, r, m
 ```
 
-<img width="1045" height="679" alt="image" src="https://github.com/user-attachments/assets/9de82f6e-63da-4576-ae5c-9b0bb49a841d" />
+<img width="1146" height="723" alt="image" src="https://github.com/user-attachments/assets/cd86829b-1628-4c6f-8d46-a107ecb36a0c" />
 
 **Show complete GCP attack surface:**
 
@@ -295,6 +302,15 @@ MATCH (b:GCPBucket) RETURN b LIMIT 25
 
 // List all BigQuery datasets
 MATCH (d:GCPDataset) RETURN d LIMIT 25
+
+// List all log sinks
+MATCH (ls:GCPLogSink) RETURN ls LIMIT 25
+
+// List all log buckets
+MATCH (lb:GCPLogBucket) RETURN lb LIMIT 25
+
+// Find all users or service accounts with access to log sinks
+MATCH (a)-[r:CanAccessLogStream|CanViewSensitiveLogs]->(ls:GCPLogSink) RETURN a, r, ls
 ```
 
 - Relationship Discovery
@@ -389,9 +405,9 @@ Please feel free to:
 ## 🔮 Roadmap & TODO
 
 ### **Immediate Priorities**
-- [ ] **Work on making all objects searchable from BloodHound UI** - Fix search functionality for GCP nodes
 - [ ] **Work on integrating with AD objects** - Connect GCP identities with Active Directory  
 - [ ] **Work on adding more recon features and detailing** - Expand enumeration capabilities
+- [ ] Expand detail level for logging privilege analysis, relationship mapping
 
 ### **Upcoming Features**
 - [ ] **Pub/Sub & Messaging** - Topics, subscriptions, and Cloud Tasks enumeration
@@ -419,6 +435,7 @@ GCP-Hound/
 │   ├── folder_collector.py
 │   ├── gke_collector.py
 │   ├── iam_collector.py
+│   ├── logging_collector.py 
 │   ├── org_collector.py
 │   ├── privesc_analyzer.py
 │   ├── project_collector.py
