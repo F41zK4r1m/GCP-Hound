@@ -140,7 +140,8 @@ def assess_enumeration_capabilities(project_apis):
         "Secrets": False,
         "BigQuery": False,
         "GKE Clusters": False,
-        "Cloud Functions": False
+        "Cloud Functions": False,
+        "Logging": False  # Added Logging capability
     }
     
     enriched_project_data = {}
@@ -220,6 +221,15 @@ def assess_enumeration_capabilities(project_apis):
         else:
             project_capabilities["Cloud Functions"] = False
             print(f"      {colorize('Cloud Functions', TerminalColors.RED)}    ✗")
+        
+        # Check Logging API for Logging resources
+        if any('logging.googleapis.com' in api for api in apis):
+            capabilities["Logging"] = True
+            project_capabilities["Logging"] = True
+            print(f"      {colorize('Logging', TerminalColors.GREEN)}           ✓")
+        else:
+            project_capabilities["Logging"] = False
+            print(f"      {colorize('Logging', TerminalColors.RED)}           ✗")
         
         enriched_project_data[project_id] = {
             'project_id': project_id,
