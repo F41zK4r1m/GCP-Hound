@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from utils.id_utils import normalize_dataset_id
 
 def safe_add_edge(edges, start_id, end_id, kind, properties):
     """
@@ -397,7 +398,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts,
             
             if dataset_id and project_id:
                 # Use the SAME ID format your json_builder uses for dataset nodes
-                canonical_dataset_id = f"gcp-bq-dataset-{project_id}-{dataset_id}".replace('_', '-').lower()
+                canonical_dataset_id = normalize_dataset_id(dataset_id, project_id)
                 
                 success = safe_add_edge(
                     edges=edges,
@@ -411,7 +412,7 @@ def build_resource_ownership_edges(projects, buckets, secrets, service_accounts,
                         "tableCount": dataset.get('table_count', 0),
                         "location": dataset.get('location', 'Unknown'),
                         "fullDatasetId": dataset.get('full_dataset_id', f"{project_id}:{dataset_id}"),
-                        "description": f"Project {project_id} owns BigQuery dataset {dataset_id}"
+                        "description": f"Project {project_id} owns BigQuery dataset {canonical_dataset_id}"
                     }
                 )
                 
