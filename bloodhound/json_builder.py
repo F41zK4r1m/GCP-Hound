@@ -2,6 +2,8 @@ from bhopengraph.OpenGraph import OpenGraph
 from bhopengraph.Node import Node
 from bhopengraph.Edge import Edge
 from bhopengraph.Properties import Properties
+from utils.id_utils import normalize_dataset_id, normalize_all_dataset_variations
+
 import os
 import json
 
@@ -268,7 +270,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
     return edges
 
 def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None):
-    """FIXED: Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
+    """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
     graph = OpenGraph(source_kind="GCPHound")
     
     print(f"[*] Phase 5: Building Complete Attack Path Graph with Real Data Only")
@@ -449,18 +451,17 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(bucket_name, discovered_project_names):
             node_id_map[variation] = bucket_name
 
-    # CRITICAL FIX: BigQuery datasets with canonical ID format
+    # BigQuery datasets with canonical ID format using normalize_dataset_id
     for dataset in bigquery_datasets:
         dataset_id = dataset.get('dataset_id', '')
         project_id = dataset.get('project', '').lower()
-        
+
         # VALIDATION: Skip if no valid dataset or project info
         if not project_id or not dataset_id:
             print(f"[WARNING] Skipping dataset with missing project/dataset info: {dataset}")
             continue
-        
-        # CRITICAL FIX: Use the EXACT same canonical ID format as edge_builder
-        canonical_dataset_id = f"gcp-bq-dataset-{project_id}-{dataset_id}".replace('_', '-').lower()
+
+        canonical_dataset_id = normalize_dataset_id(dataset_id, project_id)
         
         clean_properties = {
             "name": dataset_id,
@@ -470,8 +471,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "platform": "GCP",
             "project": project_id,
             "description": f"BigQuery Dataset: {dataset_id}",
-            
-            # Real GCP-specific metadata from API
             "gcpResourceType": "BigQuery Dataset",
             "gcpDatasetType": "BigQuery",
             "gcpTableCount": dataset.get('table_count', 'Unknown'),
@@ -479,8 +478,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "creationTime": dataset.get('created', 'Unknown'),
             "lastModifiedTime": dataset.get('modified', 'Unknown'),
             "fullDatasetId": dataset.get('full_dataset_id', f"{project_id}:{dataset_id}"),
-            
-            # Real security analysis
             "riskLevel": dataset.get('riskLevel', 'Unknown'),
             "gcpEncryption": dataset.get('encryption', 'Unknown'),
             "gcpDataClassification": dataset.get('dataClassification', 'Unknown'),
@@ -489,9 +486,9 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             "accessLogging": dataset.get('accessLogging', 'Unknown'),
             "remediationPriority": dataset.get('remediationPriority', 'Unknown')
         }
-        
+
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
-        
+            
         # Create node with canonical ID
         bq_node = Node(
             id=canonical_dataset_id,
@@ -500,32 +497,15 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         )
         graph.add_node(bq_node)
         
-        # COMPREHENSIVE ID MAPPING - Map all possible variations
-        # Standard variations
-        for variation in normalize_variations(dataset_id, discovered_project_names):
+        # COMPREHENSIVE ID MAPPING using normalize_all_dataset_variations
+        for variation in normalize_all_dataset_variations(dataset_id, project_id):
             node_id_map[variation] = canonical_dataset_id
-            
-        # Project:dataset format variations  
-        project_dataset_variations = [
-            f"{project_id}:{dataset_id}",
-            f"{project_id}_{dataset_id}",
-            f"{project_id}-{dataset_id}",
-            f"{project_id}.{dataset_id}"
-        ]
-        
-        for variation in project_dataset_variations:
-            node_id_map[variation.lower()] = canonical_dataset_id
-            # Also normalize this variation
-            for sub_variation in normalize_variations(variation.lower(), discovered_project_names):
-                node_id_map[sub_variation] = canonical_dataset_id
-        
-        # Map the canonical ID to itself
         node_id_map[canonical_dataset_id] = canonical_dataset_id
         
-        # CRITICAL DEBUG OUTPUT
+        # SAFE DEBUG OUTPUT - No hardcoded company data
         print(f"[DEBUG] ✅ Created dataset node with canonical ID: {canonical_dataset_id}")
         print(f"[DEBUG] ✅ From dataset: project='{project_id}', dataset_id='{dataset_id}'")
-        print(f"[DEBUG] ✅ Mapped {len(project_dataset_variations) + len(normalize_variations(dataset_id, discovered_project_names))} variations to canonical ID")
+        print(f"[DEBUG] ✅ Mapped {len(normalize_all_dataset_variations(dataset_id, project_id))} variations to canonical ID")
 
     # Add logging resource nodes using ONLY real enumerated data (keep as GCPLogSink for icons)
     for sink in log_sinks:
@@ -732,17 +712,19 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
     print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
     
-    # Check the problematic dataset nodes now exist
-    test_nodes = ['data-papouille', 'gcp-bq-dataset-data-papouille-ecommerce-data']
-    for test_node in test_nodes:
-        exists_in_graph = test_node in graph.nodes
-        exists_in_map = test_node in node_id_map
-        print(f"[DEBUG] Node '{test_node}' in graph.nodes: {exists_in_graph}")
-        print(f"[DEBUG] Node '{test_node}' in node_id_map: {exists_in_map}")
-        if exists_in_map:
-            mapped_id = node_id_map[test_node]
-            mapped_exists = mapped_id in graph.nodes
-            print(f"[DEBUG] '{test_node}' maps to: '{mapped_id}' (in graph: {mapped_exists})")
+    # Generic dataset node existence verification
+    if bigquery_datasets:
+        sample_dataset = bigquery_datasets[0]
+        sample_dataset_id = sample_dataset.get('dataset_id', '')
+        sample_project_id = sample_dataset.get('project', '')
+        if sample_dataset_id and sample_project_id:
+            canonical_id = normalize_dataset_id(sample_dataset_id, sample_project_id)
+            exists_in_graph = canonical_id in graph.nodes
+            exists_in_map = canonical_id in node_id_map
+            print(f"[DEBUG] Sample dataset node in graph: {exists_in_graph}")
+            print(f"[DEBUG] Sample dataset node in mapping: {exists_in_map}")
+    else:
+        print("[DEBUG] No datasets enumerated for verification")
 
     # Create logging access edges with IAM data
     logging_edges = create_logging_access_edges(log_sinks, current_user, service_accounts, iam_data)
