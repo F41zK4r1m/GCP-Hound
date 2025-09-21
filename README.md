@@ -17,6 +17,12 @@
 
 ---
 
+## Credits
+
+GCP-Hound's BloodHound-compatible graph export feature relies on the excellent [bhopengraph](https://github.com/p0dalirius/bhopengraph/tree/main) library by [@p0dalirius](https://github.com/p0dalirius).
+
+Many thanks to the author for providing an easy, schema-flexible way to generate and export complex attack graphs!
+
 ## 🎯 Overview
 
 **GCP-Hound** is an open-source security enumeration and privilege escalation discovery tool designed specifically for Google Cloud Platform environments. Built to integrate seamlessly with **BloodHound's OpenGraph** framework, it transforms complex GCP IAM relationships into interactive attack graphs.
@@ -27,9 +33,21 @@ This project began as a personal learning journey into GCP-focused penetration t
 
 The tool may currently lack many advanced features, but I'm committed to gradually improving and expanding its capabilities based on community feedback and real-world testing scenarios.
 
+## Limitations
+
+**Search Functionality**: The BloodHound Community Edition UI currently does not support search for custom start/end nodes with GCP data. Analysis must be performed via direct Cypher queries. This is a limitation of the BloodHound platform, not GCP-Hound, and will be addressed if native support becomes available.
+- **API Coverage**: GCP-Hound relies on Google Cloud APIs for enumeration. Some APIs or services may be disabled in target projects by default, resulting in partial data collection. Enabling additional APIs (e.g., via the gcloud CLI) may improve coverage, but this tool is strictly read-only and does not modify cloud configurations.
+- **Environment Scope**: The tool has primarily been tested in lab and CTF settings. Results in large-scale or production GCP organizations may be incomplete or contain gaps.
+- **Edge/Description Accuracy**: Some edge relationship descriptions are generated heuristically and may be imprecise in certain contexts due to the diversity of real-world GCP configurations.
+
+## Known Issues
+
+- Some edge types/descriptions are still experimental and may change.
+- Parsing of large GCP environments can result in missed entities if project-level APIs are disabled or throttled.
+
 ---
 
-## ✨ Key Features
+##  Key Features
 
 ### **Current Capabilities (Implemented)**
 * 🔍 **Comprehensive GCP Enumeration** – Projects, service accounts, storage buckets, BigQuery datasets, logging resources
@@ -93,7 +111,7 @@ pip install -r requirements.txt
 ## Option A: Service Account Key
 
 ```
-export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account-key.json"
+export GCP_CREDS="path/to/key.json"
 ```
 
 ## Option B: OAuth2 (Interactive)
@@ -103,13 +121,13 @@ gcloud auth application-default login
 ```
 
 
-## Option C: Using gcloud CLI
+## Option C: Using gcloud CLI (Experimental Features)
 
 ```
 gcloud auth login
 ```
 
-### **3. BloodHound Integration Setup (Optional but Recommended)**
+### **3. BloodHound Integration Setup to make the icons enable (Optional but Recommended)**
 
 To enable custom GCP icons and node types in BloodHound:
 
@@ -119,7 +137,6 @@ python3 register_gcp_nodes.py -s http://localhost:8080 -u admin -p password
 
 This step is required only once per BloodHound instance and enables:
 - ✅ Custom GCP icons in the BloodHound UI  
-- ✅ Searchable GCP node types
 - ✅ Enhanced visualization experience
 
 ---
@@ -208,7 +225,7 @@ GCP-Hound currently enumerates **23 distinct GCP node types** across the Google 
 
 | Category                  | Node Types                                               | Description                                            |
 |---------------------------|---------------------------------------------------------|--------------------------------------------------------|
-| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`    | User identities, groups, and service accounts          |
+| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`, `GCPGoogleManagedSA`    | User identities, groups, and service accounts          |
 | **Organization**          | `GCPProject`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
 | **Compute & Containers**  | `GCPInstance`, `GCPCluster`, `GCPNode`                                 | Compute Engine VMs and GKE clusters                    |
 | **Storage & Data**        | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction`                 | Storage, BigQuery, Secret Manager, Cloud Functions     |
@@ -229,6 +246,8 @@ GCP-Hound currently enumerates **23 distinct GCP node types** across the Google 
 | `CanListKeys` | **MEDIUM** | Ability to enumerate existing service account keys |
 | `ContainsServiceAccount` | **LOW** | Project ownership of service accounts |
 | `OwnsStorageBucket` | **MEDIUM** | Resource ownership relationships |
+| `HasGoogleOwnedSA` | **INFO** | Indicates that a GCP project relies on a Google-managed service account for certain internal operations or APIs. |
+| `CanModifyBucketPoliciesInProject` | **HIGH** | Indicates that an identity (user, SA) has permissions to modify storage bucket policies at the project scope, supporting privilege escalation scenarios. |
 | `BelongsTo` | **INFO** | Resource-to-project associations |
 
 ### **Understanding Attack Paths**
