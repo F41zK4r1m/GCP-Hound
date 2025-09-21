@@ -383,6 +383,23 @@
         "filter",
         "platform"
       ]
+    },
+    "GCPGoogleManagedSA": {
+      "icon": {
+        "type": "font-awesome",
+        "name": "robot",
+        "color": "#9E9E9E"
+      },
+      "display_property": "displayname",
+      "searchable_properties": [
+        "name",
+        "displayname",
+        "email",
+        "objectid",
+        "serviceType",
+        "managedBy",
+        "platform"
+      ]
     }
   }
 }
