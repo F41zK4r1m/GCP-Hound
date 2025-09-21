@@ -3,9 +3,73 @@ from bhopengraph.Node import Node
 from bhopengraph.Edge import Edge
 from bhopengraph.Properties import Properties
 from utils.id_utils import normalize_dataset_id, normalize_all_dataset_variations
-
 import os
 import json
+import re
+
+# ---- Google-managed SA and external user detection utilities ----
+def is_google_managed_sa(email):
+    """Detect Google-managed service accounts"""
+    return re.match(r'^service-\d+@gcp-sa-.*\.iam\.gserviceaccount\.com$', email) is not None
+
+def extract_service_name(sa_email):
+    """Extract service name from Google-managed SA email"""
+    if 'firebase' in sa_email.lower():
+        return 'firebase'
+    elif 'firestore' in sa_email.lower():
+        return 'firestore'
+    elif 'storage' in sa_email.lower():
+        return 'storage'
+    elif 'cloudrun' in sa_email.lower():
+        return 'cloudrun'
+    elif 'gcp-sa-' in sa_email:
+        parts = sa_email.split('@')[1].split('.')[0].replace('gcp-sa-', '')
+        return parts
+    return 'unknown'
+
+def is_gcp_service_account(email):
+    """Check if email is a GCP service account (any kind)"""
+    return email.endswith('.iam.gserviceaccount.com')
+
+def is_external_user(email):
+    """Any email that's NOT a GCP service account is external"""
+    return not is_gcp_service_account(email)
+
+def extract_project_from_iam_policy(iam_policy):
+    """Extract project ID from IAM policy"""
+    return iam_policy.get('projectId', '')
+
+def get_user_roles_from_iam(user_email, iam_policy):
+    """Get roles assigned to a specific user"""
+    user_identifier = f"user:{user_email}"
+    roles = []
+    
+    for binding in iam_policy.get('bindings', []):
+        if user_identifier in binding.get('members', []):
+            roles.append(binding.get('role', ''))
+    
+    return roles
+
+def get_sa_roles_from_iam(sa_email, iam_data):
+    """Extract actual roles assigned to service account from IAM data"""
+    sa_roles = []
+    
+    if not iam_data:
+        return sa_roles
+    
+    service_account_identifier = f"serviceAccount:{sa_email}"
+    
+    for iam_policy in iam_data:
+        bindings = iam_policy.get('bindings', [])
+        
+        for binding in bindings:
+            members = binding.get('members', [])
+            role = binding.get('role', '')
+            
+            if service_account_identifier in members:
+                sa_roles.append(role)
+    
+    return sa_roles
 
 def normalize_variations(text, discovered_projects=None):
     """Generate all possible ID variations for fuzzy matching"""
@@ -35,13 +99,13 @@ def normalize_variations(text, discovered_projects=None):
     return variations
 
 def sanitize_property_value(value):
-    """Ensure property values are schema compliant"""
+    """Ensure property values are schema compliant - keep arrays for node properties"""
     if value is None:
         return "Unknown"
     if isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, list):
-        return [str(v) if v is not None else "Unknown" for v in value]
+        return value  # Keep arrays for node properties
     return str(value)
 
 def fix_edge_name(edge_name):
@@ -57,30 +121,10 @@ def fix_edge_name(edge_name):
         "CanEscalateViaComputeinstancescreate": "CanCreateComputeInstance",
         "CanEscalateViaCloudfunctionscreate": "CanCreateCloudFunction",
         "CanEscalateViaResourcemanagerprojectssetiampolicy": "CanModifyProjectPolicy",
-        "CanEscalateViaStoragebucketssetiampolicy": "CanModifyBucketPolicy",
+        #"CanEscalateViaStoragebucketssetiampolicy": "CanModifyBucketPolicy",
+        "CanModifyBucketPoliciesInProject": "CanModifyBucketPoliciesInProject",
     }
     return edge_mapping.get(edge_name, edge_name)
-
-def get_sa_roles_from_iam(sa_email, iam_data):
-    """Extract actual roles assigned to service account from IAM data"""
-    sa_roles = []
-    
-    if not iam_data:
-        return sa_roles
-    
-    service_account_identifier = f"serviceAccount:{sa_email}"
-    
-    for iam_policy in iam_data:
-        bindings = iam_policy.get('bindings', [])
-        
-        for binding in bindings:
-            members = binding.get('members', [])
-            role = binding.get('role', '')
-            
-            if service_account_identifier in members:
-                sa_roles.append(role)
-    
-    return sa_roles
 
 def analyze_sa_actual_privileges_for_node(sa_email, iam_data):
     """Analyze service account privileges for node properties based on ACTUAL IAM roles"""
@@ -172,9 +216,7 @@ def filter_edges_for_bloodhound(edges):
     return clean_edges
 
 def validate_and_clean_graph_data(nodes, edges, args=None):
-    """
-    Validate nodes and edges before OpenGraph processing to prevent empty ID errors
-    """
+    """Validate nodes and edges before OpenGraph processing to prevent empty ID errors"""
     print("[DEBUG] Starting graph validation...")
     
     # Count original data
@@ -205,7 +247,7 @@ def validate_and_clean_graph_data(nodes, edges, args=None):
     return valid_edges
 
 def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_data=None):
-    """Create edges for log stream access - ONLY for accounts with actual logging permissions"""
+    """Create edges for log stream access - arrays converted to strings for edge properties"""
     edges = []
     
     for sink in log_sinks:
@@ -226,7 +268,8 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                     'sensitivityLevel': sink.get('sensitivityLevel', 'LOW'),
                     'description': f"Can access {sink.get('logType')} logs: {sink.get('displayName')}",
                     'escalationMethod': 'log_stream_access',
-                    'accessRequired': sink.get('accessRequired', [])
+                    'requiredPermissions': sink.get('accessRequired', []),
+                    'accessRequired': ", ".join(sink.get('accessRequired', [])) if sink.get('accessRequired') else "None"
                 }
             }
             edges.append(user_edge)
@@ -238,7 +281,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                 if not sa_email:
                     continue
                 
-                # CRITICAL FIX: Check if SA actually has logging permissions
+                # Check if SA actually has logging permissions
                 sa_roles = get_sa_roles_from_iam(sa_email, iam_data) if iam_data else []
                 
                 # Only SAs with these roles can access logging
@@ -252,6 +295,8 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                 
                 # ONLY create edge if SA has actual logging permissions
                 if has_logging_access:
+                    granted_roles = [r for r in sa_roles if r in logging_roles]
+                    
                     sa_edge = {
                         'start': {'value': sa_email},
                         'end': {'value': sink.get('objectId')},
@@ -262,7 +307,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                             'sensitivityLevel': sink.get('sensitivityLevel'),
                             'description': f"SA with logging permissions can access sensitive {sink.get('logType')} logs",
                             'escalationMethod': 'privileged_log_access',
-                            'grantedViaRoles': [r for r in sa_roles if r in logging_roles]
+                            'grantedViaRoles': granted_roles
                         }
                     }
                     edges.append(sa_edge)
@@ -271,7 +316,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
 
 def export_bloodhound_json(computers, users, projects, groups, service_accounts, buckets, secrets, edges, creds=None, iam_data=None, log_sinks=None, log_buckets=None, log_metrics=None, bigquery_datasets=None):
     """Export comprehensive GCP data to BloodHound JSON format using ONLY real enumerated data"""
-    graph = OpenGraph(source_kind="GCPHound")
+    graph = OpenGraph()  # NO source_kind parameter
     
     print(f"[*] Phase 5: Building Complete Attack Path Graph with Real Data Only")
     print(f"[DEBUG] Starting export with {len(service_accounts)} SAs, {len(projects)} projects, {len(buckets)} buckets, {len(edges)} edges")
@@ -294,6 +339,92 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     
     # Build node mapping
     node_id_map = {}
+
+    # ---- NEW: Google-managed SAs from IAM bindings ----
+    discovered_google_managed_sas = set()
+    if iam_data:
+        for policy in iam_data:
+            for binding in policy.get('bindings', []):
+                for member in binding.get('members', []):
+                    if member.startswith('serviceAccount:'):
+                        sa_email = member.replace('serviceAccount:', '')
+                        if is_google_managed_sa(sa_email):
+                            discovered_google_managed_sas.add(sa_email)
+
+    # Create nodes for Google-managed SAs (only if not already in service_accounts list)
+    existing_sa_emails = [sa.get('email', '').lower() for sa in service_accounts]
+    for gmsa_email in discovered_google_managed_sas:
+        if gmsa_email.lower() not in existing_sa_emails:
+            service_name = extract_service_name(gmsa_email)
+            
+            clean_properties = {
+                "name": gmsa_email,
+                "displayname": f"Google {service_name.title()} Service Account",
+                "objectid": gmsa_email,
+                "email": gmsa_email,
+                "platform": "GCP",
+                "description": f"Google-managed service account for {service_name}",
+                "gcpResourceType": "Google Managed Service Account",
+                "serviceType": service_name,
+                "managedBy": "Google"
+            }
+            
+            sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+            
+            # FIXED: Only 2 kinds maximum
+            gmsa_node = Node(
+                id=gmsa_email,
+                kinds=["GCPGoogleManagedSA", "GCPServiceAccount"],
+                properties=Properties(**sanitized_properties)
+            )
+            graph.add_node(gmsa_node)
+            
+            for variation in normalize_variations(gmsa_email, discovered_project_names):
+                node_id_map[variation] = gmsa_email
+
+    # ---- NEW: External users from IAM bindings ----
+    discovered_users = set()
+    if iam_data:
+        for policy in iam_data:
+            for binding in policy.get('bindings', []):
+                for member in binding.get('members', []):
+                    if member.startswith('user:'):
+                        user_email = member.replace('user:', '')
+                        discovered_users.add(user_email)
+
+    # Create nodes for discovered users (avoid duplicating current user)
+    for user_email in discovered_users:
+        if user_email not in graph.nodes:  # Avoid duplicating current user
+            domain = user_email.split('@')[1] if '@' in user_email else 'unknown'
+            username = user_email.split('@')[0] if '@' in user_email else user_email
+            user_type = "External" if is_external_user(user_email) else "ServiceAccount"
+            
+            clean_properties = {
+                "name": user_email,
+                "displayname": user_email,
+                "objectid": user_email,
+                "email": user_email,
+                "username": username,
+                "domain": domain,
+                "platform": "GCP",
+                "description": f"GCP User: {user_email}",
+                "gcpResourceType": "User Account",
+                "userType": user_type,
+                "authMethod": "User"
+            }
+            
+            sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
+            
+            # FIXED: Only 2 kinds maximum
+            user_node = Node(
+                id=user_email,
+                kinds=["GCPUser", "GCPResource"],
+                properties=Properties(**sanitized_properties)
+            )
+            graph.add_node(user_node)
+            
+            for variation in normalize_variations(user_email, discovered_project_names):
+                node_id_map[variation] = user_email
 
     # Add service accounts using ONLY real enumerated data
     for sa in service_accounts:
@@ -344,9 +475,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         sa_node = Node(
             id=sa_email,
-            kinds=["GCPServiceAccount", "GCPResource", "GCPHound"],
+            kinds=["GCPServiceAccount", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sa_node)
@@ -393,9 +525,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         proj_node = Node(
             id=project_id,
-            kinds=["GCPProject", "GCPResource", "GCPHound"],
+            kinds=["GCPProject", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(proj_node)
@@ -441,9 +574,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         bucket_node = Node(
             id=bucket_name,
-            kinds=["GCPBucket", "GCPResource", "GCPHound"],
+            kinds=["GCPBucket", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bucket_node)
@@ -489,25 +623,20 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
             
-        # Create node with canonical ID
+        # Create node with canonical ID - FIXED: Only 2 kinds maximum
         bq_node = Node(
             id=canonical_dataset_id,
-            kinds=["GCPDataset", "GCPResource", "GCPHound"],
+            kinds=["GCPDataset", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bq_node)
         
-        # COMPREHENSIVE ID MAPPING using normalize_all_dataset_variations
+        # Comprehensive ID mapping using normalize_all_dataset_variations
         for variation in normalize_all_dataset_variations(dataset_id, project_id):
             node_id_map[variation] = canonical_dataset_id
         node_id_map[canonical_dataset_id] = canonical_dataset_id
-        
-        # SAFE DEBUG OUTPUT - No hardcoded company data
-        print(f"[DEBUG] ✅ Created dataset node with canonical ID: {canonical_dataset_id}")
-        print(f"[DEBUG] ✅ From dataset: project='{project_id}', dataset_id='{dataset_id}'")
-        print(f"[DEBUG] ✅ Mapped {len(normalize_all_dataset_variations(dataset_id, project_id))} variations to canonical ID")
 
-    # Add logging resource nodes using ONLY real enumerated data (keep as GCPLogSink for icons)
+    # Add logging resource nodes using ONLY real enumerated data
     for sink in log_sinks:
         sink_id = sink.get('objectId', sink.get('name', ''))
         
@@ -551,10 +680,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
-        # Use GCPLogSink kind for UI compatibility
+        # Use GCPLogSink kind for UI compatibility - FIXED: Only 2 kinds maximum
         sink_node = Node(
             id=sink_id,
-            kinds=["GCPLogSink", "GCPResource", "GCPHound"],
+            kinds=["GCPLogSink", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sink_node)
@@ -597,9 +726,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         log_bucket_node = Node(
             id=bucket_id,
-            kinds=["GCPLogBucket", "GCPResource", "GCPHound"],
+            kinds=["GCPLogBucket", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(log_bucket_node)
@@ -640,9 +770,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         metric_node = Node(
             id=metric_id,
-            kinds=["GCPLogMetric", "GCPResource", "GCPHound"],
+            kinds=["GCPLogMetric", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(metric_node)
@@ -698,9 +829,10 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         
         sanitized_properties = {k: sanitize_property_value(v) for k, v in clean_properties.items()}
         
+        # FIXED: Only 2 kinds maximum
         user_node = Node(
             id=current_user,
-            kinds=["GCPUser", "GCPResource", "GCPHound"],
+            kinds=["GCPUser", "GCPResource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(user_node)
@@ -708,36 +840,60 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         for variation in normalize_variations(current_user, discovered_project_names):
             node_id_map[variation] = current_user
 
-    # Debug output for comprehensive node mapping validation
-    print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
-    print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
-    
-    # Generic dataset node existence verification
-    if bigquery_datasets:
-        sample_dataset = bigquery_datasets[0]
-        sample_dataset_id = sample_dataset.get('dataset_id', '')
-        sample_project_id = sample_dataset.get('project', '')
-        if sample_dataset_id and sample_project_id:
-            canonical_id = normalize_dataset_id(sample_dataset_id, sample_project_id)
-            exists_in_graph = canonical_id in graph.nodes
-            exists_in_map = canonical_id in node_id_map
-            print(f"[DEBUG] Sample dataset node in graph: {exists_in_graph}")
-            print(f"[DEBUG] Sample dataset node in mapping: {exists_in_map}")
-    else:
-        print("[DEBUG] No datasets enumerated for verification")
+    # ---- NEW: Add edge types for new relationships ----
+    # Add Project -> HasGoogleOwnedSA -> GoogleManagedSA edges
+    for policy in iam_data or []:
+        project_id = extract_project_from_iam_policy(policy)
+        for binding in policy.get('bindings', []):
+            for member in binding.get('members', []):
+                if member.startswith('serviceAccount:'):
+                    sa_email = member.replace('serviceAccount:', '')
+                    if is_google_managed_sa(sa_email) and project_id:
+                        edges.append({
+                            'start': {'value': project_id},
+                            'end': {'value': sa_email},
+                            'kind': 'HasGoogleOwnedSA',
+                            'properties': {
+                                'source': 'iam_analysis',
+                                'managedService': extract_service_name(sa_email),
+                                'description': 'Project uses Google-managed service account'
+                            }
+                        })
+
+    # Add User -> OwnsProject/MemberOfProject -> Project edges
+    for policy in iam_data or []:
+        project_id = extract_project_from_iam_policy(policy)
+        for binding in policy.get('bindings', []):
+            role = binding.get('role', '').lower()
+            for member in binding.get('members', []):
+                if member.startswith('user:'):
+                    user_email = member.replace('user:', '')
+                    is_owner = 'owner' in role
+                    edge_kind = "OwnsProject" if is_owner else "MemberOfProject"
+                    user_roles = get_user_roles_from_iam(user_email, policy)
+                    
+                    if project_id:
+                        edges.append({
+                            'start': {'value': user_email},
+                            'end': {'value': project_id},
+                            'kind': edge_kind,
+                            'properties': {
+                                'source': 'iam_analysis',
+                                'roles': ", ".join(user_roles),  # Convert array to string for edge properties
+                                'description': f'User has {", ".join(user_roles)} on project'
+                            }
+                        })
 
     # Create logging access edges with IAM data
     logging_edges = create_logging_access_edges(log_sinks, current_user, service_accounts, iam_data)
     edges.extend(logging_edges)
 
-    # ADD EDGE FILTERING HERE - THE MAIN FIX
+    # Edge filtering
     edges = filter_edges_for_bloodhound(edges)
 
     # Validate edges before processing
     edges = validate_and_clean_graph_data(graph.nodes, edges, None)
 
-    # Block SA→Project edges for SA-scoped permissions
-    
     # Build edge variations for validation
     all_sa_variations = set()
     for sa in service_accounts:
@@ -757,16 +913,33 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         'CanModifyIamPolicy', 'CanImpersonate', 'CanCreateKeys'
     }
 
-    # Process edges with STRICT SA→SA vs SA→Project validation
+    # Process edges with RESTORED detailed debugging
     edges_added = 0
     skipped_edges = 0
+    
+    print(f"[DEBUG] ✅ Total nodes in graph: {graph.get_node_count()}")
+    print(f"[DEBUG] ✅ Total entries in node_id_map: {len(node_id_map)}")
+    
+    # Generic dataset node existence verification
+    if bigquery_datasets:
+        sample_dataset = bigquery_datasets[0]
+        sample_dataset_id = sample_dataset.get('dataset_id', '')
+        sample_project_id = sample_dataset.get('project', '')
+        if sample_dataset_id and sample_project_id:
+            canonical_id = normalize_dataset_id(sample_dataset_id, sample_project_id)
+            exists_in_graph = canonical_id in graph.nodes
+            exists_in_map = canonical_id in node_id_map
+            print(f"[DEBUG] Sample dataset node in graph: {exists_in_graph}")
+            print(f"[DEBUG] Sample dataset node in mapping: {exists_in_map}")
+    else:
+        print("[DEBUG] No datasets enumerated for verification")
     
     for i, edge_data in enumerate(edges):
         start_id = edge_data.get("start", {}).get("value", "").lower()
         end_id = edge_data.get("end", {}).get("value", "").lower()
         kind = fix_edge_name(edge_data.get("kind", "RelatedTo"))
         
-        # ADDITIONAL VALIDATION: Skip if either ID is empty
+        # VALIDATION: Skip if either ID is empty
         if not start_id or not start_id.strip() or not end_id or not end_id.strip():
             skipped_edges += 1
             print(f"[DEBUG] ❌ Skipping edge with empty ID: start='{start_id}', end='{end_id}'")
@@ -775,13 +948,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         actual_start = node_id_map.get(start_id, start_id)
         actual_end = node_id_map.get(end_id, end_id)
         
-        # CRITICAL FIX: Block SA→Project edges for SA-scoped permissions
+        # Block SA→Project edges for SA-scoped permissions
         if kind in sa_scoped_edge_types and end_id in all_project_variations:
             skipped_edges += 1
             print(f"[DEBUG] ❌ Blocking invalid SA→Project edge: {start_id} --[{kind}]-> {end_id}")
             continue
             
-        # Also block if target is not a valid node
+        # Block if target is not a valid node
         if actual_start not in graph.nodes or actual_end not in graph.nodes:
             skipped_edges += 1
             print(f"[DEBUG] ❌ Skipping edge to missing node: {actual_start} -> {actual_end}")
@@ -794,14 +967,18 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             kind=kind
         )
         
-        # Sanitize edge properties for schema compliance
+        # Convert arrays to strings only for edge properties
         for key, value in edge_data.get("properties", {}).items():
-            sanitized_value = sanitize_property_value(value)
+            if isinstance(value, list):
+                sanitized_value = ", ".join([str(v) for v in value]) if value else "None"
+            else:
+                sanitized_value = sanitize_property_value(value)
             edge.set_property(key, sanitized_value)
         
         if graph.add_edge(edge):
             edges_added += 1
-            if edges_added <= 5:  # Show first 5 successful edges
+            # Show first 10 successful edges for debugging
+            if edges_added <= 10:
                 print(f"[DEBUG] ✅ Edge #{edges_added}: {actual_start} --[{kind}]-> {actual_end}")
 
     print(f"[DEBUG] Edges added: {edges_added}/{len(edges)} (skipped {skipped_edges} invalid edges)")
@@ -824,27 +1001,39 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
     success = graph.export_to_file(output_file)
     
     if success:
-        # Validate the exported JSON structure
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Ensure metadata is present and correct
-            if 'metadata' not in data:
-                data['metadata'] = {"source_kind": "GCPHound"}
+            # Fix edges to have proper match_by format
+            if 'graph' in data and 'edges' in data['graph']:
+                for edge in data['graph']['edges']:
+                    if 'start' in edge and isinstance(edge['start'], dict):
+                        edge['start']['match_by'] = 'id'
+                    if 'end' in edge and isinstance(edge['end'], dict):
+                        edge['end']['match_by'] = 'id'
+                    
+                    # Final conversion of any remaining array properties to strings in edge properties
+                    if 'properties' in edge:
+                        for prop_key, prop_value in edge['properties'].items():
+                            if isinstance(prop_value, list):
+                                edge['properties'][prop_key] = ", ".join([str(v) for v in prop_value]) if prop_value else "None"
             
-            # Re-save with proper formatting
+            # DO NOT SET ANY METADATA - let BloodHound handle it
+            # No metadata injection that could add source_kind
+            
+            # Re-save with proper formatting and schema compliance
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             
-            print(f"[DEBUG] ✅ Schema validation passed")
+            print(f"[DEBUG] ✅ Clean export completed - no source_kind metadata")
             
         except Exception as e:
-            print(f"[DEBUG] ⚠️ Schema validation warning: {e}")
+            print(f"[DEBUG] ⚠️ Export warning: {e}")
 
         print(f"[+] ✅ FINAL RESULT: {graph.get_node_count()} nodes, {edges_added} edges")
         print(f"[+] File: {output_file}")
-        print(f"[+] 🎯 GCP ATTACK SURFACE WITH LOGGING INTEGRATION COMPLETE")
+        print(f"[+] 🎯 GCP ATTACK SURFACE WITH NEW FEATURES COMPLETE")
         return output_file
     else:
         print(f"[!] ❌ Export failed")
