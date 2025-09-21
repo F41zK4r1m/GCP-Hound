@@ -17,8 +17,8 @@ from collectors.gke_collector import collect_gke_clusters, analyze_gke_privilege
 from collectors.users_groups_collector import collect_users_and_groups, analyze_users_groups_privilege_escalation, build_users_groups_edges
 from collectors.sa_key_analyzer import analyze_service_account_key_access, build_key_access_edges
 from collectors.privesc_analyzer import GCPPrivilegeEscalationAnalyzer, check_workspace_admin_status
-from collectors.edge_builder import build_edges
-from collectors.iam_collector import collect_iam, analyze_cross_project_permissions
+from collectors.edge_builder import build_edges, build_service_account_permission_edges #added new functions from edge builder
+from collectors.iam_collector import collect_iam, analyze_cross_project_permissions, collect_service_account_permissions #added new functions from iam collector
 from collectors.user_collector import collect_users
 from collectors.folder_collector import collect_folders, build_folder_edges
 from collectors.logging_collector import collect_logging_resources, analyze_logging_access_privileges, build_logging_edges
@@ -215,7 +215,7 @@ For more authentication details: https://cloud.google.com/docs/authentication
                 sys.exit(1)
             user = args.impersonate
         else:
-            creds = get_google_credentials()
+            creds = get_google_credentials(debug=args.debug) #debug functionality
             user = get_active_account(creds)
         
         print(f"[+] Running as: {colorize(user, TerminalColors.GREEN)}")
@@ -353,6 +353,17 @@ For more authentication details: https://cloud.google.com/docs/authentication
             handle_api_error(e, "IAM enumeration", args)
             iam_data = []
             outbound_permissions = []
+            
+            # NEW: Service Account Permission Analysis
+        service_account_permissions = []
+        if sacs and iam_data:
+            if args.verbose:
+                print(f"[*] Phase 3A2: Service Account Permission Analysis")
+            try:
+                service_account_permissions = collect_service_account_permissions(creds, sacs, projects, args)
+            except Exception as e:
+                handle_api_error(e, "Service account permission analysis", args)
+
         
         # Phase 3B: Folder collection  
         if args.verbose:
@@ -517,6 +528,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
             #bigquery_edges = build_bigquery_edges(bigquery_datasets, bigquery_access_analysis, user) if bigquery_datasets else []
             gke_edges = build_gke_edges(gke_clusters, gke_escalation_analysis, user) if gke_clusters else []
             users_groups_edges = build_users_groups_edges(users, groups, group_memberships, users_groups_escalation, user) if users else []
+            sa_permission_edges = build_service_account_permission_edges(service_account_permissions) if service_account_permissions else []
+            
             
             logging_edges = []
             if log_sinks or log_buckets or log_metrics:
@@ -538,7 +551,8 @@ For more authentication details: https://cloud.google.com/docs/authentication
             folder_edges = build_folder_edges(folders, folder_hierarchy, projects)
             
             # Include logging edges
-            all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
+            all_edges = base_edges + key_access_edges + secret_access_edges + sa_permission_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
+            #all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
             #all_edges = base_edges + key_access_edges + secret_access_edges + compute_edges + bigquery_edges + gke_edges + users_groups_edges + logging_edges + escalation_edges + folder_edges
             
             if args.verbose:
