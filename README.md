@@ -37,6 +37,7 @@ The tool may currently lack many advanced features, but I'm committed to gradual
 
 **Search Functionality**: The BloodHound Community Edition UI currently does not support search for custom start/end nodes with GCP data. Analysis must be performed via direct Cypher queries. This is a limitation of the BloodHound platform, not GCP-Hound, and will be addressed if native support becomes available.
 - **API Coverage**: GCP-Hound relies on Google Cloud APIs for enumeration. Some APIs or services may be disabled in target projects by default, resulting in partial data collection. Enabling additional APIs (e.g., via the gcloud CLI) may improve coverage, but this tool is strictly read-only and does not modify cloud configurations.
+- - **User and Group Enumeration**: Unlike Azure Entra ID (AAD) or on-premises Active Directory, GCP does not reliably expose APIs to enumerate all users or groups within an organization or project by default. Enumeration of users and groups is only possible if the executing account has sufficient permissions (such as admin privileges or delegated directory roles). Otherwise, group/user visibility is limited or unavailable.
 - **Environment Scope**: The tool has primarily been tested in lab and CTF settings. Results in large-scale or production GCP organizations may be incomplete or contain gaps.
 - **Edge/Description Accuracy**: Some edge relationship descriptions are generated heuristically and may be imprecise in certain contexts due to the diversity of real-world GCP configurations.
 
