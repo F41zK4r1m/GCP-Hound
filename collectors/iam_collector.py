@@ -80,7 +80,7 @@ def collect_iam(creds, projects, args=None):
 def analyze_cross_project_permissions(creds, current_user, projects, args=None):
     """
     Analyze what external resources the current user can control.
-    This data will populate the "Outbound Object Control" section.
+    This data will populate the Outbound Object Control section.
     """
     outbound_controls = []
     
@@ -148,10 +148,10 @@ def analyze_cross_project_permissions(creds, current_user, projects, args=None):
                     if args and args.verbose:
                         print(f"[+] User has {len(granted_permissions)} permissions in project: {project_id}")
                     
-                    # Log critical permissions
+                    # Log critical permissions (removed emoji for professional output)
                     critical_perms = [p for p in granted_permissions if 'iam' in p or 'create' in p]
                     if critical_perms and args and args.verbose:
-                        print(f"    🚨 CRITICAL permissions: {', '.join(critical_perms)}")
+                        print(f"    CRITICAL permissions: {', '.join(critical_perms)}")
                         
             except HttpError as e:
                 if args and args.debug:
@@ -171,3 +171,76 @@ def analyze_cross_project_permissions(creds, current_user, projects, args=None):
     if args and args.verbose:
         print(f"[+] Found outbound control capabilities in {len(outbound_controls)} projects")
     return outbound_controls
+
+def collect_service_account_permissions(creds, service_accounts, projects, args=None):
+    """
+    NEW: Collect IAM policies for individual service accounts to determine
+    which users can impersonate or manage each service account.
+    Returns raw permission data for edge_builder processing.
+    """
+    service_account_permissions = []
+    
+    if not creds or not service_accounts:
+        if args and args.debug:
+            print("[DEBUG] No credentials or service accounts provided for SA permission analysis")
+        return service_account_permissions
+    
+    try:
+        iam_service = build("iam", "v1", credentials=creds)
+        
+        if args and args.verbose:
+            print(f"[*] Service Account Permissions: Analyzing {len(service_accounts)} service accounts...")
+        
+        # Group service accounts by project for efficient processing
+        sas_by_project = {}
+        for sa in service_accounts:
+            project_id = sa.get('project')
+            if project_id:
+                if project_id not in sas_by_project:
+                    sas_by_project[project_id] = []
+                sas_by_project[project_id].append(sa)
+        
+        for project_id, project_sas in sas_by_project.items():
+            if args and args.verbose:
+                print(f"[*] Analyzing {len(project_sas)} service accounts in project: {project_id}")
+            
+            for sa in project_sas:
+                sa_email = sa.get('email')
+                if not sa_email:
+                    continue
+                
+                try:
+                    # Get IAM policy for this specific service account
+                    policy = iam_service.projects().serviceAccounts().getIamPolicy(
+                        resource=f'projects/{project_id}/serviceAccounts/{sa_email}'
+                    ).execute()
+                    
+                    bindings = policy.get('bindings', [])
+                    
+                    if bindings:
+                        service_account_permissions.append({
+                            'serviceAccount': sa_email,
+                            'project': project_id,
+                            'displayName': sa.get('displayName', sa.get('name', sa_email)),
+                            'bindings': bindings
+                        })
+                        
+                        if args and args.verbose:
+                            print(f"[+] Service account {sa.get('displayName', sa_email)}: {len(bindings)} IAM bindings")
+                
+                except HttpError as e:
+                    if args and args.debug and e.resp.status != 403:
+                        print(f"[DEBUG] Error getting SA policy for {sa_email}: {e}")
+                
+                except Exception as e:
+                    if args and args.debug:
+                        print(f"[DEBUG] Unexpected error for SA {sa_email}: {e}")
+        
+    except Exception as e:
+        if args and args.debug:
+            print(f"[DEBUG] Failed to initialize IAM service for SA permissions: {e}")
+    
+    if args and args.verbose:
+        print(f"[+] Service Account Permissions: Found policies on {len(service_account_permissions)} service accounts")
+    
+    return service_account_permissions
