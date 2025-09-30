@@ -244,6 +244,7 @@ GCP-Hound currently enumerates **23 distinct GCP node types** across the Google 
 |-----------|------------|-------------|
 | `CanCreateKeys` | **CRITICAL** | Ability to create service account keys (direct privilege escalation) |
 | `CanImpersonate` | **HIGH** | Service account impersonation capabilities |
+| `CanReadSecrets` and `CanReadSecretsInProject`| **HIGH** | shows which account hold privileged access to secrets |
 | `CanListKeys` | **MEDIUM** | Ability to enumerate existing service account keys |
 | `ContainsServiceAccount` | **LOW** | Project ownership of service accounts |
 | `OwnsStorageBucket` | **MEDIUM** | Resource ownership relationships |
@@ -316,6 +317,27 @@ MATCH (p:GCPProject) RETURN p LIMIT 25
 
 // List all GCP resources
 MATCH (res:GCPResource) RETURN res LIMIT 25
+
+// Show all accounts with secret access
+MATCH p = ()-[r]->()
+WHERE type(r) IN ["CanReadSecrets", "CanReadSecretsInProject"]
+RETURN p
+LIMIT 50
+
+// Show owner/editor secret access
+MATCH p = (sa)-[r:CanReadSecretsInProject]->(proj)
+WHERE r.role IN ["roles/owner", "roles/editor"]
+RETURN p
+
+// Show service account with secret access
+MATCH p = (sa:GCPServiceAccount)-[r]->(target)
+WHERE type(r) IN ["CanReadSecrets", "CanReadSecretsInProject"]
+RETURN p
+
+// Show users with secret access
+MATCH p = (user:GCPUser)-[r]->(target)
+WHERE type(r) IN ["CanReadSecrets", "CanReadSecretsInProject"]
+RETURN p
 
 // List all storage buckets
 MATCH (b:GCPBucket) RETURN b LIMIT 25
