@@ -123,6 +123,8 @@ def fix_edge_name(edge_name):
         "CanEscalateViaResourcemanagerprojectssetiampolicy": "CanModifyProjectPolicy",
         #"CanEscalateViaStoragebucketssetiampolicy": "CanModifyBucketPolicy",
         "CanModifyBucketPoliciesInProject": "CanModifyBucketPoliciesInProject",
+        "CanReadSecrets": "CanReadSecrets",# added to create read secrets edges
+        "CanReadSecretsInProject": "CanReadSecretsInProject",# added to create read secrets edges
     }
     return edge_mapping.get(edge_name, edge_name)
 
