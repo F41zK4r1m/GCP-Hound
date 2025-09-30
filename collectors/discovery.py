@@ -26,12 +26,29 @@ def discover_projects_comprehensive(creds):
     projects = []
     discovery_method = None
     
-    # Method 1: Try Cloud Resource Manager API
+    # Method 1: Try Cloud Resource Manager API with pagination
     try:
         crm = build("cloudresourcemanager", "v1", credentials=creds)
         request = crm.projects().list()
-        response = request.execute()
-        projects = response.get('projects', [])
+        
+        # Add pagination loop to existing logic
+        while request is not None:
+            try:
+                response = request.execute()
+                page_projects = response.get('projects', [])
+                projects.extend(page_projects)
+                
+                # Get next page
+                request = crm.projects().list_next(request, response)
+                
+            except HttpError as e:
+                # If we get SERVICE_DISABLED or similar, break pagination and fall back
+                if any(keyword in str(e) for keyword in ['SERVICE_DISABLED', 'API has not been used', 'not enabled']):
+                    print(f"[!] Cloud Resource Manager API disabled - using fallback methods")
+                    projects = []  # Clear any partial results
+                    break
+                else:
+                    raise  # Re-raise other HTTP errors
         
         if projects:
             discovery_method = "Cloud Resource Manager API"
@@ -47,7 +64,7 @@ def discover_projects_comprehensive(creds):
     except Exception as e:
         print(f"[!] Error with Cloud Resource Manager API: {e}")
     
-    # Method 2: Infer from service account email
+    # Method 2: Infer from service account email (unchanged)
     try:
         from utils.auth import get_active_account
         user_email = get_active_account(creds)
@@ -75,7 +92,7 @@ def discover_projects_comprehensive(creds):
     except Exception as e:
         print(f"[!] Error inferring project from service account: {e}")
     
-    # Method 3: Try to enumerate via IAM (if we have permissions)
+    # Method 3: Try to enumerate via IAM (unchanged)
     try:
         iam = build("iam", "v1", credentials=creds)
         # This might help discover projects indirectly
@@ -87,7 +104,7 @@ def discover_projects_comprehensive(creds):
 
 def discover_apis_for_projects(creds, projects):
     """
-    Discover enabled APIs for each project.
+    Discover enabled APIs for each project with pagination support.
     Returns dict mapping project IDs to enabled APIs.
     """
     project_apis = {}
@@ -103,11 +120,29 @@ def discover_apis_for_projects(creds, projects):
                 parent=f"projects/{project_id}",
                 filter="state:ENABLED"
             )
-            response = request.execute()
             
-            enabled_services = response.get('services', [])
+            # Add pagination to existing logic
+            enabled_services = []
+            while request is not None:
+                try:
+                    response = request.execute()
+                    page_services = response.get('services', [])
+                    enabled_services.extend(page_services)
+                    
+                    # Get next page
+                    request = serviceusage.services().list_next(request, response)
+                    
+                except HttpError as e:
+                    # If we get SERVICE_DISABLED, stop pagination and handle gracefully
+                    if any(keyword in str(e) for keyword in ['SERVICE_DISABLED', 'API has not been used', 'not enabled']):
+                        print(f"[!] Service Usage API not enabled for project {project_id}")
+                        enabled_services = []  # Clear any partial results
+                        break
+                    else:
+                        raise  # Re-raise other HTTP errors
+            
+            # Process services (existing logic unchanged)
             api_names = []
-            
             for service in enabled_services:
                 service_name = service.get('config', {}).get('name', '')
                 if service_name:
