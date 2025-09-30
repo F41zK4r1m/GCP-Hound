@@ -121,7 +121,7 @@ AUTHENTICATION:
     $ gcloud auth application-default login
     
   Option B: Service Account Key File
-    $ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+    $ export GCP_CREDS="/path/to/service-account-key.json"
     
   Option C: Impersonate Service Account (with -i flag)
     $ python3 gcp-hound.py -i target-service@project.iam.gserviceaccount.com
@@ -582,12 +582,18 @@ For more authentication details: https://cloud.google.com/docs/authentication
         
         # Clean summary with conditional messages
         unavailable_apis = []
-        if not sacs: unavailable_apis.append("Service Accounts")
-        if not buckets: unavailable_apis.append("Storage Buckets")
-        if not secrets: unavailable_apis.append("Secrets")
-        if not instances: unavailable_apis.append("Compute Instances")
-        if not bigquery_datasets: unavailable_apis.append("BigQuery")
-        if not gke_clusters: unavailable_apis.append("GKE Clusters")
+        if not capabilities.get("Service Accounts"):
+        	unavailable_apis.append("Service Accounts")
+        if not capabilities.get("Storage Buckets"):
+        	unavailable_apis.append("Storage Buckets")
+        if not capabilities.get("Secrets"):
+        	unavailable_apis.append("Secrets")
+        if not capabilities.get("Compute Instances"):
+        	unavailable_apis.append("Compute Instances")
+        if not capabilities.get("BigQuery"):
+        	unavailable_apis.append("BigQuery")
+        if not capabilities.get("GKE Clusters"):
+        	unavailable_apis.append("GKE Clusters")
         
         print(f"\n" + "=" * 80)
         if unavailable_apis:
