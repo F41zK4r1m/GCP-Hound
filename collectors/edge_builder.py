@@ -63,7 +63,7 @@ def build_edges(projects, iam_data, users, service_accounts, buckets, secrets, b
     stats["created"] += len(resource_edges)
 
     # Build privilege escalation edges with strict permission separation
-    privesc_edges = build_privilege_escalation_edges(iam_data, service_accounts, debug)
+    privesc_edges = build_privilege_escalation_edges(iam_data, service_accounts, secrets, debug)
     edges.extend(privesc_edges)
     stats["created"] += len(privesc_edges)
 
@@ -562,6 +562,7 @@ def get_enhanced_permissions_for_role(role):
             'iam.serviceAccounts.actAs', 'iam.serviceAccountKeys.create',
             'compute.instances.create', 'cloudfunctions.functions.create',
             'resourcemanager.projects.setIamPolicy', 'storage.buckets.setIamPolicy'
+            'secretmanager.secrets.get', 'secretmanager.versions.access'# added for secrets enumeration
         ],
         'roles/editor': [
             'iam.serviceAccounts.actAs', 'compute.instances.create',
@@ -572,18 +573,22 @@ def get_enhanced_permissions_for_role(role):
         'roles/iam.securityAdmin': ['iam.serviceAccounts.actAs', 'resourcemanager.projects.setIamPolicy'],
         'roles/compute.admin': ['compute.instances.create', 'compute.instances.setServiceAccount'],
         'roles/storage.admin': ['storage.buckets.setIamPolicy'],
-        'roles/deploymentmanager.editor': ['deploymentmanager.deployments.create']
+        'roles/deploymentmanager.editor': ['deploymentmanager.deployments.create'],
+        'roles/secretmanager.secretAccessor': ['secretmanager.versions.access'],# added for secrets enumeration
+        'roles/secretmanager.admin': ['secretmanager.secrets.get', 'secretmanager.versions.access']# added for secrets enumeration
     }
     return role_permissions.get(role, [])
 
 def get_escalation_risk_level(permission):
     critical_perms = [
         'iam.serviceAccounts.actAs', 'iam.serviceAccountKeys.create',
-        'resourcemanager.projects.setIamPolicy', 'storage.buckets.setIamPolicy'
+        'resourcemanager.projects.setIamPolicy', 'storage.buckets.setIamPolicy',
+        'secretmanager.versions.access'# added for secrets permission
     ]
     high_perms = [
         'compute.instances.create', 'cloudfunctions.functions.create',
-        'compute.instances.setServiceAccount', 'cloudfunctions.functions.sourceCodeSet'
+        'compute.instances.setServiceAccount', 'cloudfunctions.functions.sourceCodeSet',
+        'secretmanager.secrets.get'# added for secrets permission
     ]
     if permission in critical_perms:
         return 'CRITICAL'
@@ -605,7 +610,9 @@ def get_attack_vector_for_permission(permission):
         'compute.instances.setServiceAccount': 'Instance Service Account Hijacking',
         'cloudfunctions.functions.create': 'Serverless Code Execution',
         'resourcemanager.projects.setIamPolicy': 'Project Policy Takeover',
-        'storage.buckets.setIamPolicy': 'Bucket Policy Manipulation'
+        'storage.buckets.setIamPolicy': 'Bucket Policy Manipulation',
+        'secretmanager.versions.access': 'Secret Value Access',# added for secrets permission
+        'secretmanager.secrets.get': 'Secret Metadata Access'# added for secrets permission
     }
     return attack_vectors.get(permission, 'Resource Manipulation')
 
@@ -629,7 +636,7 @@ def clean_member_id(member):
         return member.replace('group:', '').lower()
     return None
 
-def build_privilege_escalation_edges(iam_data, service_accounts, debug=False):
+def build_privilege_escalation_edges(iam_data, service_accounts, secrets=None, debug=False):
     """Build privilege escalation edges with strict SA-to-SA and SA-to-Project separation"""
     edges = []
     edges_created = 0
@@ -652,6 +659,11 @@ def build_privilege_escalation_edges(iam_data, service_accounts, debug=False):
         'iam.serviceAccounts.setIamPolicy': 'CanModifyIamPolicy',
         'iam.serviceAccountKeys.create': 'CanCreateKeys'
     }
+    
+    secret_scoped_permissions = {# NEW DICTIONARY
+    'secretmanager.versions.access': 'CanReadSecrets',
+    'secretmanager.secrets.get': 'CanReadSecretMetadata'
+    }
 
     # Permissions that operate on PROJECTS - create SA->Project edges
     project_scoped_permissions = {
@@ -660,7 +672,8 @@ def build_privilege_escalation_edges(iam_data, service_accounts, debug=False):
         'cloudfunctions.functions.create': 'CanCreateCloudFunction',
         'resourcemanager.projects.setIamPolicy': 'CanModifyProjectPolicy',
         #'storage.buckets.setIamPolicy': 'CanModifyBucketPolicy'
-        'storage.buckets.setIamPolicy': 'CanModifyBucketPoliciesInProject'
+        'storage.buckets.setIamPolicy': 'CanModifyBucketPoliciesInProject',
+        'secretmanager.versions.access': 'CanReadSecretsInProject'# added for read secrets permissions
     }
 
     for iam_policy in iam_data:
@@ -738,6 +751,32 @@ def build_privilege_escalation_edges(iam_data, service_accounts, debug=False):
                                 print(f"[DEBUG] ✅ SA-to-Project edge: {member_id} --[{edge_kind}]-> {project_id}")
                         else:
                             edges_skipped += 1
+                    elif perm in secret_scoped_permissions:  # added for secrets permission
+                        edge_kind = secret_scoped_permissions[perm]
+                        risk_level = get_escalation_risk_level(perm)
+                        project_secrets = [s for s in secrets if s.get('project', '').lower() == project_id]
+                        for secret in project_secrets:
+                            secret_name = secret.get('name', '').lower()
+                            if secret_name:
+                                success = safe_add_edge(
+                                    edges=edges,
+                                    start_id=member_id,
+                                    end_id=secret_name,
+                                    kind=edge_kind,
+                                    properties={
+                                        "source": "privilege_escalation_analysis",
+                                        "permission": perm,
+                                        "role": role,
+                                        "riskLevel": risk_level,
+                                        "projectContext": project_id,
+                                        "attackVector": get_attack_vector_for_permission(perm),
+                                        "description": f"{member_id} can access secret {secret_name} via {perm}"
+                                    }
+                                )
+                                if success:
+                                    edges_created += 1
+                                else:
+                                    edges_skipped += 1
 
     print(f"[+] Built {edges_created} privilege escalation edges")
     if edges_skipped > 0:
@@ -762,6 +801,19 @@ def validate_edges_post_build(edges, debug=False):
             invalid_edges += 1
             if debug:
                 print(f"[DEBUG] Invalid edge detected: start='{start_id}', end='{end_id}', kind='{kind}'")
+                    # --- DEBUG PATCH: print missing node edges ---
+                if actual_start not in graph.nodes or actual_end not in graph.nodes:
+                    print(
+                        f"[DEBUG][EDGE SKIP] Edge #{i}: {start_id} ({actual_start}) --[{edge_data.get('kind','RelatedTo')}]--> {end_id} ({actual_end})"
+                    )
+                    if actual_start not in graph.nodes:
+                        print(f"  [DEBUG] MISSING NODE: start ({actual_start}) not in graph.nodes")
+                    if actual_end not in graph.nodes:
+                        print(f"  [DEBUG] MISSING NODE: end ({actual_end}) not in graph.nodes")
+                    # Optional: print all graph.nodes for investigation
+                    # print('Known nodes:', list(graph.nodes.keys()))
+                    continue
+
     
     print(f"[+] Edge validation summary: {valid_edges} valid, {invalid_edges} invalid")
     return valid_edges, invalid_edges
