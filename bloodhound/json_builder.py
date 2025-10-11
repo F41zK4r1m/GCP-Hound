@@ -999,14 +999,148 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         output_filename = "gcp-bhopgraph.json"
     
     output_file = os.path.join("./output", output_filename)
+    def infer_node_kinds(node_id):
+        """
+        Infer node kinds and description from ID pattern.
+        Uses smart pattern matching for all GCP resource types.
+        """
+        import re
+        
+        # Google-managed Service Account (standard pattern)
+        if re.match(r"^service-\d+@gcp-sa-[a-z0-9\-]+\.iam\.gserviceaccount\.com$", node_id):
+            # Extract service name from the pattern
+            service_match = re.search(r"@gcp-sa-([a-z0-9\-]+)\.", node_id)
+            service_name = service_match.group(1) if service_match else "unknown"
+            return (
+                ["GCPGoogleManagedSA", "GCPServiceAccount"],
+                f"Google-managed {service_name.replace('-', ' ').title()} Service Account"
+            )
+        
+        # Cloud service robots (compute-system, firebase-rules, gcf-admin-robot, cloudservices)
+        robot_pattern = r"@(cloudservices|compute-system|firebase-rules|gcf-admin-robot|container-engine-robot)\.iam\.gserviceaccount\.com$"
+        if re.search(robot_pattern, node_id):
+            service_match = re.search(r"@([a-z\-]+)\.", node_id)
+            if service_match:
+                service_name = service_match.group(1).replace('-', ' ').title()
+                return (
+                    ["GCPGoogleManagedSA", "GCPServiceAccount"],
+                    f"Google {service_name} Service Robot"
+                )
+        
+        # Regular GCP Service Account (ends with @*.gserviceaccount.com)
+        # This includes user- prefixed SAs and regular ones
+        if node_id.endswith("@gserviceaccount.com") or ("@" in node_id and "gserviceaccount.com" in node_id):
+            # Handle special prefixes
+            if node_id.startswith("user-"):
+                sa_name = node_id.split("@")[0].replace("user-", "")
+                return (
+                    ["GCPServiceAccount", "GCPResource"],
+                    f"Service Account: {sa_name}"
+                )
+            else:
+                return (
+                    ["GCPServiceAccount", "GCPResource"],
+                    "GCP Service Account"
+                )
+        
+        # GCP User (has @ but NOT a service account)
+        if "@" in node_id and "gserviceaccount.com" not in node_id:
+            return (
+                ["GCPUser", "GCPResource"],
+                f"GCP User: {node_id}"
+            )
+        
+        # Project node with gcp-project- prefix
+        if node_id.startswith("gcp-project-"):
+            project_id = node_id.replace("gcp-project-", "")
+            return (
+                ["GCPProject", "GCPResource"],
+                f"GCP Project: {project_id}"
+            )
+        
+        # Regular project ID pattern (lowercase alphanumeric with hyphens, 6-30 chars)
+        if re.match(r"^[a-z][a-z0-9\-]{5,30}$", node_id) and ":" not in node_id:
+            return (
+                ["GCPProject", "GCPResource"],
+                f"GCP Project: {node_id}"
+            )
+        
+        # Log sink/stream
+        if "logstream:" in node_id or "sink:" in node_id:
+            return (
+                ["GCPLogSink", "GCPResource"],
+                f"Log Stream: {node_id.split(':')[-1]}"
+            )
+        
+        # Log bucket
+        if "bucket:" in node_id and ("_Default" in node_id or "_Required" in node_id):
+            return (
+                ["GCPLogBucket", "GCPResource"],
+                f"Log Bucket: {node_id.split(':')[-1]}"
+            )
+        
+        # Storage bucket (ends with .app or .appspot.com)
+        if node_id.endswith(".app") or node_id.endswith(".appspot.com"):
+            return (
+                ["GCPBucket", "GCPResource"],
+                f"Storage Bucket: {node_id}"
+            )
+        
+        # Dataset (has gcp-bq-dataset prefix or contains dataset keyword)
+        if node_id.startswith("gcp-bq-dataset-") or "dataset" in node_id.lower():
+            return (
+                ["GCPDataset", "GCPResource"],
+                f"BigQuery Dataset: {node_id}"
+            )
+        
+        # Fallback - generic resource
+        return (
+            ["GCPResource"],
+            f"GCP Resource: {node_id}"
+        )
     
+    for edge_data in edges:
+        for endpoint in ["start", "end"]:
+            node_id = edge_data.get(endpoint, {}).get("value")
+            if node_id and node_id not in graph.nodes:
+                # USE IMPROVED infer_node_kinds() FUNCTION (defined above)
+                # detection for 15+ GCP resource types
+                kinds, desc = infer_node_kinds(node_id)
+
+                # OLD LOGIC (kept for reference)
+                # if "@gserviceaccount.com" in node_id:
+                #     kinds = ["GCPServiceAccount", "GCPResource"]
+                #     desc = "Auto-created service account node (missing from data)"
+                # elif "logstream:" in node_id or "sink:" in node_id:
+                #     kinds = ["GCPLogSink", "GCPResource"]
+                #     desc = "Auto-created log stream node (missing from data)"
+                # else:
+                #     kinds = ["GCPResource"]
+                #     desc = "Auto-created node (missing from data)"
+                # Create node with minimal properties
+                graph.add_node(Node(
+                    id=node_id,
+                    kinds=kinds,
+                    properties=Properties(
+                        objectid=node_id,
+                        platform="GCP",
+                        description=desc
+                    )
+                ))
+
     success = graph.export_to_file(output_file)
     
     if success:
         try:
             with open(output_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
+            #added this patch to see if label works or not
+            if 'graph' in data and 'nodes' in data['graph']:
+                for node in data['graph']['nodes']:
+                    # Add 'label' field = first item in 'kinds' array
+                    if 'kinds' in node and len(node['kinds']) > 0:
+                        node['label'] = node['kinds'][0]
+
             # Fix edges to have proper match_by format
             if 'graph' in data and 'edges' in data['graph']:
                 for edge in data['graph']['edges']:
@@ -1020,9 +1154,6 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         for prop_key, prop_value in edge['properties'].items():
                             if isinstance(prop_value, list):
                                 edge['properties'][prop_key] = ", ".join([str(v) for v in prop_value]) if prop_value else "None"
-            
-            # DO NOT SET ANY METADATA - let BloodHound handle it
-            # No metadata injection that could add source_kind
             
             # Re-save with proper formatting and schema compliance
             with open(output_file, 'w', encoding='utf-8') as f:
