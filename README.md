@@ -226,7 +226,7 @@ GCP-Hound currently enumerates **23 distinct GCP node types** across the Google 
 
 | Category                  | Node Types                                               | Description                                            |
 |---------------------------|---------------------------------------------------------|--------------------------------------------------------|
-| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`, `GCPGoogleManagedSA`    | User identities, groups, and service accounts          |
+| **Identity & Access**     | `GCPUser`, `GCPGroup`, `GCPServiceAccount`, `GCPServiceAccountKey`, `GCPGoogleManagedSA`,`CanSignBlob`, `CanSignJWT`  | User identities, groups, and service accounts          |
 | **Organization**          | `GCPProject`, `GCPFolder`, `GCPOrganization`                           | Organizational structure and hierarchy                 |
 | **Compute & Containers**  | `GCPInstance`, `GCPCluster`, `GCPNode`                                 | Compute Engine VMs and GKE clusters                    |
 | **Storage & Data**        | `GCPBucket`, `GCPDataset`, `GCPSecret`, `GCPFunction`                 | Storage, BigQuery, Secret Manager, Cloud Functions     |
@@ -278,6 +278,8 @@ GCP-Hound focuses on discovering privilege escalation opportunities through:
 ### **Attack Relationship Types**
 - **CanCreateKeys** - CRITICAL service account key creation
 - **CanImpersonate** - HIGH-risk service account impersonation
+- **CanSignBlob** - HIGH-risk, where identity (user or service account) has the `iam.serviceAccounts.signBlob` permission on service account.
+- **CanSignJWT** - HIGH-risk, where `iam.serviceAccounts.signJwt` permission allows an identity to sign a JSON Web Token (JWT) using a target service account's identity
 - **CanListKeys** - MEDIUM key enumeration capabilities
 - **BelongsTo** - Resource ownership relationships
 
@@ -385,8 +387,8 @@ MATCH (source)-[r:CanListKeys]->(target) RETURN source, r, target LIMIT 25
 
 // Show all privilege escalation edges
 MATCH (n)-[r]->(m) 
-WHERE type(r) IN ['CanCreateKeys', 'CanImpersonate', 'CanListKeys']
-RETURN n, r, m LIMIT 50
+WHERE type(r) IN ['CanCreateKeys', 'CanImpersonate', 'CanListKeys','CanSignBlob','CanSignJWT']
+RETURN n, r, m LIMIT 100
 ```
 
 ---
