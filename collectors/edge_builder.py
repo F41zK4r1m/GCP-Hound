@@ -560,14 +560,18 @@ def get_enhanced_permissions_for_role(role):
     role_permissions = {
         'roles/owner': [
             'iam.serviceAccounts.actAs', 'iam.serviceAccountKeys.create',
+            'iam.serviceAccounts.signBlob', 'iam.serviceAccounts.signJwt', #added for sigining blob and jwt
             'compute.instances.create', 'cloudfunctions.functions.create',
             'resourcemanager.projects.setIamPolicy', 'storage.buckets.setIamPolicy'
             'secretmanager.secrets.get', 'secretmanager.versions.access'# added for secrets enumeration
         ],
         'roles/editor': [
-            'iam.serviceAccounts.actAs', 'compute.instances.create',
+            'iam.serviceAccounts.actAs',
+            'iam.serviceAccounts.signBlob', 'iam.serviceAccounts.signJwt', #added for sigining blob and jwt
+            'compute.instances.create',
             'cloudfunctions.functions.create', 'compute.instances.setServiceAccount'
         ],
+        'roles/iam.serviceAccountTokenCreator': ['iam.serviceAccounts.getAccessToken', 'iam.serviceAccounts.signBlob', 'iam.serviceAccounts.signJwt'], #added for sigining blob and jwt
         'roles/iam.serviceAccountUser': ['iam.serviceAccounts.actAs'],
         'roles/iam.serviceAccountKeyAdmin': ['iam.serviceAccountKeys.create', 'iam.serviceAccountKeys.get'],
         'roles/iam.securityAdmin': ['iam.serviceAccounts.actAs', 'resourcemanager.projects.setIamPolicy'],
