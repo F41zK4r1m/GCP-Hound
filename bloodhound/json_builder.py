@@ -109,22 +109,64 @@ def sanitize_property_value(value):
     return str(value)
 
 def fix_edge_name(edge_name):
-    """Clean up verbose edge names to readable format"""
+    """
+    Normalize edge names to GCP_-prefixed schema kinds.
+    All edges must use the GCP_ namespace prefix to avoid collisions
+    with built-in BloodHound edge kinds (e.g. MemberOf, AdminTo).
+    """
+    # If already correctly prefixed, pass through
+    if edge_name.startswith("GCP_"):
+        return edge_name
+
     edge_mapping = {
-        "CanEscalateViaIamserviceaccountkeyscreate": "CanCreateKeys",
-        "CanEscalateViaIamserviceaccountsactas": "CanImpersonate", 
-        "CanEscalateViaIamserviceaccountsgetaccesstoken": "CanGetAccessToken",
-        "CanEscalateViaIamserviceaccountssignblob": "CanSignBlob",
-        "CanEscalateViaIamserviceaccountssignjwt": "CanSignJWT",
-        "CanEscalateViaIamserviceaccounts": "CanImpersonate",
-        "CanEscalateViaIamserviceaccountssetiampolicy": "CanModifyIamPolicy",
-        "CanEscalateViaComputeinstancescreate": "CanCreateComputeInstance",
-        "CanEscalateViaCloudfunctionscreate": "CanCreateCloudFunction",
-        "CanEscalateViaResourcemanagerprojectssetiampolicy": "CanModifyProjectPolicy",
-        #"CanEscalateViaStoragebucketssetiampolicy": "CanModifyBucketPolicy",
-        "CanModifyBucketPoliciesInProject": "CanModifyBucketPoliciesInProject",
-        "CanReadSecrets": "CanReadSecrets",# added to create read secrets edges
-        "CanReadSecretsInProject": "CanReadSecretsInProject",# added to create read secrets edges
+        # Verbose internal names from privesc_analyzer
+        "CanEscalateViaIamserviceaccountkeyscreate":            "GCP_CanCreateKeys",
+        "CanEscalateViaIamserviceaccountsactas":                "GCP_CanImpersonate",
+        "CanEscalateViaIamserviceaccountsgetaccesstoken":       "GCP_CanGetAccessToken",
+        "CanEscalateViaIamserviceaccountssignblob":             "GCP_CanSignBlob",
+        "CanEscalateViaIamserviceaccountssignjwt":              "GCP_CanSignJWT",
+        "CanEscalateViaIamserviceaccounts":                     "GCP_CanImpersonate",
+        "CanEscalateViaIamserviceaccountssetiampolicy":         "GCP_CanModifyIamPolicy",
+        "CanEscalateViaComputeinstancescreate":                 "GCP_CanCreateComputeInstance",
+        "CanEscalateViaCloudfunctionscreate":                   "GCP_CanCreateCloudFunction",
+        "CanEscalateViaResourcemanagerprojectssetiampolicy":    "GCP_CanModifyProjectPolicy",
+        # Short names already emitted by edge_builder (in case called before prefix applied)
+        "CanImpersonate":                       "GCP_CanImpersonate",
+        "CanCreateKeys":                        "GCP_CanCreateKeys",
+        "CanGetAccessToken":                    "GCP_CanGetAccessToken",
+        "CanSignBlob":                          "GCP_CanSignBlob",
+        "CanSignJWT":                           "GCP_CanSignJWT",
+        "CanModifyIamPolicy":                   "GCP_CanModifyIamPolicy",
+        "CanManageSA":                          "GCP_CanManageSA",
+        "CanModifyProjectPolicy":               "GCP_CanModifyProjectPolicy",
+        "CanModifyBucketPoliciesInProject":     "GCP_CanModifyBucketPoliciesInProject",
+        "CanCreateComputeInstance":             "GCP_CanCreateComputeInstance",
+        "CanChangeInstanceServiceAccount":      "GCP_CanChangeInstanceServiceAccount",
+        "CanCreateCloudFunction":               "GCP_CanCreateCloudFunction",
+        "CanReadSecrets":                       "GCP_CanReadSecrets",
+        "CanReadSecretMetadata":                "GCP_CanReadSecretMetadata",
+        "CanReadSecretsInProject":              "GCP_CanReadSecretsInProject",
+        "CanAccessLogStream":                   "GCP_CanAccessLogStream",
+        "CanViewSensitiveLogs":                 "GCP_CanViewSensitiveLogs",
+        # IAM binding edges
+        "OwnsProject":                          "GCP_OwnsProject",
+        "CanEditProject":                       "GCP_CanEditProject",
+        "CanViewProject":                       "GCP_CanViewProject",
+        "HasRoleOnProject":                     "GCP_HasRoleOnProject",
+        "AdministerProject":                    "GCP_AdministerProject",
+        "ManageProjectIAM":                     "GCP_ManageProjectIAM",
+        "ManageProjectCompute":                 "GCP_ManageProjectCompute",
+        "ManageProjectStorage":                 "GCP_ManageProjectStorage",
+        "ManageProjectBigQuery":                "GCP_ManageProjectBigQuery",
+        # Containment / ownership
+        "ContainsServiceAccount":               "GCP_ContainsServiceAccount",
+        "HighPrivilegeServiceAccount":          "GCP_HighPrivilegeServiceAccount",
+        "OwnsStorageBucket":                    "GCP_OwnsStorageBucket",
+        "OwnsSecret":                           "GCP_OwnsSecret",
+        "OwnsDataset":                          "GCP_OwnsDataset",
+        # Google-managed SA / user edges
+        "HasGoogleOwnedSA":                     "GCP_HasGoogleOwnedSA",
+        "MemberOfProject":                      "GCP_MemberOfProject",
     }
     return edge_mapping.get(edge_name, edge_name)
 
@@ -263,7 +305,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
             user_edge = {
                 'start': {'value': current_user},
                 'end': {'value': sink.get('objectId')},
-                'kind': 'CanAccessLogStream',
+                'kind': 'GCP_CanAccessLogStream',
                 'properties': {
                     'logType': sink.get('logType', 'application'),
                     'riskLevel': sink.get('riskLevel', 'MEDIUM'),
@@ -302,7 +344,7 @@ def create_logging_access_edges(log_sinks, current_user, service_accounts, iam_d
                     sa_edge = {
                         'start': {'value': sa_email},
                         'end': {'value': sink.get('objectId')},
-                        'kind': 'CanViewSensitiveLogs',
+                        'kind': 'GCP_CanViewSensitiveLogs',
                         'properties': {
                             'logType': sink.get('logType'),
                             'riskLevel': 'HIGH',
@@ -376,7 +418,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             # FIXED: Only 2 kinds maximum
             gmsa_node = Node(
                 id=gmsa_email,
-                kinds=["GCPGoogleManagedSA", "GCPServiceAccount"],
+                kinds=["GCP_GoogleManagedSA", "GCP_Resource"],
                 properties=Properties(**sanitized_properties)
             )
             graph.add_node(gmsa_node)
@@ -420,7 +462,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             # FIXED: Only 2 kinds maximum
             user_node = Node(
                 id=user_email,
-                kinds=["GCPUser", "GCPResource"],
+                kinds=["GCP_User", "GCP_Resource"],
                 properties=Properties(**sanitized_properties)
             )
             graph.add_node(user_node)
@@ -480,7 +522,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         sa_node = Node(
             id=sa_email,
-            kinds=["GCPServiceAccount", "GCPResource"],
+            kinds=["GCP_ServiceAccount", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sa_node)
@@ -530,7 +572,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         proj_node = Node(
             id=project_id,
-            kinds=["GCPProject", "GCPResource"],
+            kinds=["GCP_Project", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(proj_node)
@@ -579,7 +621,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         bucket_node = Node(
             id=bucket_name,
-            kinds=["GCPBucket", "GCPResource"],
+            kinds=["GCP_Bucket", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bucket_node)
@@ -628,7 +670,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # Create node with canonical ID - FIXED: Only 2 kinds maximum
         bq_node = Node(
             id=canonical_dataset_id,
-            kinds=["GCPDataset", "GCPResource"],
+            kinds=["GCP_Dataset", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(bq_node)
@@ -685,7 +727,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # Use GCPLogSink kind for UI compatibility - FIXED: Only 2 kinds maximum
         sink_node = Node(
             id=sink_id,
-            kinds=["GCPLogSink", "GCPResource"],
+            kinds=["GCP_LogSink", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(sink_node)
@@ -731,7 +773,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         log_bucket_node = Node(
             id=bucket_id,
-            kinds=["GCPLogBucket", "GCPResource"],
+            kinds=["GCP_LogBucket", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(log_bucket_node)
@@ -775,7 +817,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         metric_node = Node(
             id=metric_id,
-            kinds=["GCPLogMetric", "GCPResource"],
+            kinds=["GCP_LogMetric", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(metric_node)
@@ -834,7 +876,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         # FIXED: Only 2 kinds maximum
         user_node = Node(
             id=current_user,
-            kinds=["GCPUser", "GCPResource"],
+            kinds=["GCP_User", "GCP_Resource"],
             properties=Properties(**sanitized_properties)
         )
         graph.add_node(user_node)
@@ -854,7 +896,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                         edges.append({
                             'start': {'value': project_id},
                             'end': {'value': sa_email},
-                            'kind': 'HasGoogleOwnedSA',
+                            'kind': 'GCP_HasGoogleOwnedSA',
                             'properties': {
                                 'source': 'iam_analysis',
                                 'managedService': extract_service_name(sa_email),
@@ -871,7 +913,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                 if member.startswith('user:'):
                     user_email = member.replace('user:', '')
                     is_owner = 'owner' in role
-                    edge_kind = "OwnsProject" if is_owner else "MemberOfProject"
+                    edge_kind = "GCP_OwnsProject" if is_owner else "MemberOfProject"
                     user_roles = get_user_roles_from_iam(user_email, policy)
                     
                     if project_id:
@@ -1012,7 +1054,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             service_match = re.search(r"@gcp-sa-([a-z0-9\-]+)\.", node_id)
             service_name = service_match.group(1) if service_match else "unknown"
             return (
-                ["GCPGoogleManagedSA", "GCPServiceAccount"],
+                ["GCP_GoogleManagedSA", "GCP_Resource"],
                 f"Google-managed {service_name.replace('-', ' ').title()} Service Account"
             )
         
@@ -1023,7 +1065,7 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             if service_match:
                 service_name = service_match.group(1).replace('-', ' ').title()
                 return (
-                    ["GCPGoogleManagedSA", "GCPServiceAccount"],
+                    ["GCP_GoogleManagedSA", "GCP_Resource"],
                     f"Google {service_name} Service Robot"
                 )
         
@@ -1034,19 +1076,19 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
             if node_id.startswith("user-"):
                 sa_name = node_id.split("@")[0].replace("user-", "")
                 return (
-                    ["GCPServiceAccount", "GCPResource"],
+                    ["GCP_ServiceAccount", "GCP_Resource"],
                     f"Service Account: {sa_name}"
                 )
             else:
                 return (
-                    ["GCPServiceAccount", "GCPResource"],
+                    ["GCP_ServiceAccount", "GCP_Resource"],
                     "GCP Service Account"
                 )
         
         # GCP User (has @ but NOT a service account)
         if "@" in node_id and "gserviceaccount.com" not in node_id:
             return (
-                ["GCPUser", "GCPResource"],
+                ["GCP_User", "GCP_Resource"],
                 f"GCP User: {node_id}"
             )
         
@@ -1054,48 +1096,48 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
         if node_id.startswith("gcp-project-"):
             project_id = node_id.replace("gcp-project-", "")
             return (
-                ["GCPProject", "GCPResource"],
+                ["GCP_Project", "GCP_Resource"],
                 f"GCP Project: {project_id}"
             )
         
         # Regular project ID pattern (lowercase alphanumeric with hyphens, 6-30 chars)
         if re.match(r"^[a-z][a-z0-9\-]{5,30}$", node_id) and ":" not in node_id:
             return (
-                ["GCPProject", "GCPResource"],
+                ["GCP_Project", "GCP_Resource"],
                 f"GCP Project: {node_id}"
             )
         
         # Log sink/stream
         if "logstream:" in node_id or "sink:" in node_id:
             return (
-                ["GCPLogSink", "GCPResource"],
+                ["GCP_LogSink", "GCP_Resource"],
                 f"Log Stream: {node_id.split(':')[-1]}"
             )
         
         # Log bucket
         if "bucket:" in node_id and ("_Default" in node_id or "_Required" in node_id):
             return (
-                ["GCPLogBucket", "GCPResource"],
+                ["GCP_LogBucket", "GCP_Resource"],
                 f"Log Bucket: {node_id.split(':')[-1]}"
             )
         
         # Storage bucket (ends with .app or .appspot.com)
         if node_id.endswith(".app") or node_id.endswith(".appspot.com"):
             return (
-                ["GCPBucket", "GCPResource"],
+                ["GCP_Bucket", "GCP_Resource"],
                 f"Storage Bucket: {node_id}"
             )
         
         # Dataset (has gcp-bq-dataset prefix or contains dataset keyword)
         if node_id.startswith("gcp-bq-dataset-") or "dataset" in node_id.lower():
             return (
-                ["GCPDataset", "GCPResource"],
+                ["GCP_Dataset", "GCP_Resource"],
                 f"BigQuery Dataset: {node_id}"
             )
         
         # Fallback - generic resource
         return (
-            ["GCPResource"],
+            ["GCP_ServiceAccount", "GCP_Resource"],
             f"GCP Resource: {node_id}"
         )
     
@@ -1109,13 +1151,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
 
                 # OLD LOGIC (kept for reference)
                 # if "@gserviceaccount.com" in node_id:
-                #     kinds = ["GCPServiceAccount", "GCPResource"]
+                #     kinds = ["GCP_ServiceAccount", "GCP_Resource"]
                 #     desc = "Auto-created service account node (missing from data)"
                 # elif "logstream:" in node_id or "sink:" in node_id:
-                #     kinds = ["GCPLogSink", "GCPResource"]
+                #     kinds = ["GCP_LogSink", "GCP_Resource"]
                 #     desc = "Auto-created log stream node (missing from data)"
                 # else:
-                #     kinds = ["GCPResource"]
+                #     kinds = ["GCP_ServiceAccount", "GCP_Resource"]
                 #     desc = "Auto-created node (missing from data)"
                 # Create node with minimal properties
                 graph.add_node(Node(
@@ -1156,10 +1198,13 @@ def export_bloodhound_json(computers, users, projects, groups, service_accounts,
                                 edge['properties'][prop_key] = ", ".join([str(v) for v in prop_value]) if prop_value else "None"
             
             # Re-save with proper formatting and schema compliance
+            # Add metadata source_kind for BloodHound schema association
+            data["metadata"] = {"source_kind": "GCP"}
+
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             
-            print(f"[DEBUG] ✅ Clean export completed - no source_kind metadata")
+            print(f"[DEBUG] ✅ Clean export completed with source_kind: GCP")
             
         except Exception as e:
             print(f"[DEBUG] ⚠️ Export warning: {e}")

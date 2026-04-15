@@ -1,0 +1,364 @@
+{
+  "schema": {
+    "name": "GCP",
+    "display_name": "GCP",
+    "version": "v0.0.1",
+    "namespace": "GCP"
+  },
+  "node_kinds": [
+    {
+      "name": "GCP_Organization",
+      "display_name": "Organization",
+      "description": "Root node of the GCP resource hierarchy.",
+      "is_display_kind": true,
+      "icon": "building",
+      "color": "#424242"
+    },
+    {
+      "name": "GCP_Project",
+      "display_name": "Project",
+      "description": "A GCP Project. Primary unit of resource grouping and billing.",
+      "is_display_kind": true,
+      "icon": "folder-open",
+      "color": "#34A853"
+    },
+    {
+      "name": "GCP_Folder",
+      "display_name": "Folder",
+      "description": "A GCP resource hierarchy folder. IAM policies here are inherited by child projects.",
+      "is_display_kind": true,
+      "icon": "folder",
+      "color": "#8BC34A"
+    },
+    {
+      "name": "GCP_User",
+      "display_name": "User",
+      "description": "A human Google identity with IAM bindings in GCP.",
+      "is_display_kind": true,
+      "icon": "user",
+      "color": "#FF9800"
+    },
+    {
+      "name": "GCP_ServiceAccount",
+      "display_name": "Service Account",
+      "description": "A GCP Service Account identity used by applications, VMs, or Cloud Functions.",
+      "is_display_kind": true,
+      "icon": "user-tie",
+      "color": "#4285F4"
+    },
+    {
+      "name": "GCP_GoogleManagedSA",
+      "display_name": "Google-Managed SA",
+      "description": "A Google-managed service account automatically created for GCP services. Not directly controllable by users.",
+      "is_display_kind": true,
+      "icon": "robot",
+      "color": "#9E9E9E"
+    },
+    {
+      "name": "GCP_Group",
+      "display_name": "Group",
+      "description": "A Google Group used as an IAM principal. Members inherit the group's IAM bindings.",
+      "is_display_kind": true,
+      "icon": "users",
+      "color": "#FF5722"
+    },
+    {
+      "name": "GCP_Role",
+      "display_name": "IAM Role",
+      "description": "A GCP IAM Role (predefined or custom) that bundles permissions.",
+      "is_display_kind": true,
+      "icon": "shield-alt",
+      "color": "#E91E63"
+    },
+    {
+      "name": "GCP_ServiceAccountKey",
+      "display_name": "Service Account Key",
+      "description": "A user-managed key for a GCP Service Account. Represents persistent credential material.",
+      "is_display_kind": true,
+      "icon": "key",
+      "color": "#3F51B5"
+    },
+    {
+      "name": "GCP_Bucket",
+      "display_name": "Storage Bucket",
+      "description": "A Google Cloud Storage bucket. Common data exfiltration target.",
+      "is_display_kind": true,
+      "icon": "database",
+      "color": "#FBBC04"
+    },
+    {
+      "name": "GCP_Dataset",
+      "display_name": "BigQuery Dataset",
+      "description": "A BigQuery dataset. May contain sensitive data.",
+      "is_display_kind": true,
+      "icon": "chart-bar",
+      "color": "#EA4335"
+    },
+    {
+      "name": "GCP_Secret",
+      "display_name": "Secret",
+      "description": "A secret in GCP Secret Manager. High-value credential theft target.",
+      "is_display_kind": true,
+      "icon": "key",
+      "color": "#FF6D00"
+    },
+    {
+      "name": "GCP_Function",
+      "display_name": "Cloud Function",
+      "description": "A serverless Cloud Function. Runs as a service account; privilege escalation vector.",
+      "is_display_kind": true,
+      "icon": "code",
+      "color": "#673AB7"
+    },
+    {
+      "name": "GCP_Instance",
+      "display_name": "Compute Instance",
+      "description": "A GCP Compute Engine VM instance. May run as a service account.",
+      "is_display_kind": true,
+      "icon": "server",
+      "color": "#9C27B0"
+    },
+    {
+      "name": "GCP_Cluster",
+      "display_name": "GKE Cluster",
+      "description": "A Google Kubernetes Engine cluster.",
+      "is_display_kind": true,
+      "icon": "cubes",
+      "color": "#00BCD4"
+    },
+    {
+      "name": "GCP_SQLInstance",
+      "display_name": "Cloud SQL Instance",
+      "description": "A Cloud SQL managed database instance.",
+      "is_display_kind": true,
+      "icon": "database",
+      "color": "#795548"
+    },
+    {
+      "name": "GCP_Network",
+      "display_name": "VPC Network",
+      "description": "A GCP Virtual Private Cloud network.",
+      "is_display_kind": true,
+      "icon": "network-wired",
+      "color": "#00BCD4"
+    },
+    {
+      "name": "GCP_Firewall",
+      "display_name": "Firewall Rule",
+      "description": "A GCP VPC firewall rule controlling network access.",
+      "is_display_kind": true,
+      "icon": "fire",
+      "color": "#FF5722"
+    },
+    {
+      "name": "GCP_KMSKey",
+      "display_name": "KMS Key",
+      "description": "A GCP Cloud KMS cryptographic key. Access enables decryption of sensitive data.",
+      "is_display_kind": true,
+      "icon": "lock",
+      "color": "#795548"
+    },
+    {
+      "name": "GCP_LogSink",
+      "display_name": "Log Sink",
+      "description": "A GCP Cloud Logging sink. May expose sensitive audit data.",
+      "is_display_kind": true,
+      "icon": "stream",
+      "color": "#8B5CF6"
+    },
+    {
+      "name": "GCP_LogBucket",
+      "display_name": "Log Bucket",
+      "description": "A GCP Cloud Logging storage bucket for log retention.",
+      "is_display_kind": true,
+      "icon": "inbox",
+      "color": "#06B6D4"
+    },
+    {
+      "name": "GCP_LogMetric",
+      "display_name": "Log Metric",
+      "description": "A GCP log-based metric monitoring sensitive operations.",
+      "is_display_kind": true,
+      "icon": "chart-line",
+      "color": "#F59E0B"
+    },
+    {
+      "name": "GCP_PubSubTopic",
+      "display_name": "Pub/Sub Topic",
+      "description": "A GCP Pub/Sub messaging topic.",
+      "is_display_kind": true,
+      "icon": "broadcast-tower",
+      "color": "#607D8B"
+    },
+    {
+      "name": "GCP_Resource",
+      "display_name": "GCP Resource",
+      "description": "Base tag kind applied to all GCP resource nodes. Enables broad queries across every GCP node type (e.g. MATCH (n:GCP_Resource)).",
+      "is_display_kind": false,
+      "icon": "cloud",
+      "color": "#4285F4"
+    }
+  ],
+  "relationship_kinds": [
+    {
+      "name": "GCP_OwnsProject",
+      "description": "Identity has roles/owner. Full project control including IAM \u2014 can grant any role. Source can follow all outbound edges from the project.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_ManageProjectIAM",
+      "description": "Identity has projectIamAdmin, securityAdmin, or orgAdmin. Can setIamPolicy to grant themselves owner \u2014 full project control.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_ManageProjectCompute",
+      "description": "Identity has compute.admin. Can create VMs with any project SA attached \u2014 full control of any SA in the project and its outbound paths.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanImpersonate",
+      "description": "Identity has iam.serviceAccounts.actAs. Can generate tokens and act as the target SA, inheriting all its permissions and outbound attack paths.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanCreateKeys",
+      "description": "Identity has iam.serviceAccountKeys.create. Creates a persistent long-lived key \u2014 authenticate as the SA indefinitely. Full SA control.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanGetAccessToken",
+      "description": "Identity has iam.serviceAccounts.getAccessToken. Generates a short-lived OAuth token to act as the SA immediately \u2014 full SA control in that window.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanModifyIamPolicy",
+      "description": "Identity has iam.serviceAccounts.setIamPolicy on the target SA. Can grant themselves actAs permission \u2014 leading to full SA control.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanManageSA",
+      "description": "Identity has serviceAccountAdmin or equivalent. Can create, delete, update SAs, and set their IAM policies \u2014 full control of the SA.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanModifyProjectPolicy",
+      "description": "Identity has resourcemanager.projects.setIamPolicy. Can grant themselves roles/owner on the project \u2014 full project control.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_HighPrivilegeServiceAccount",
+      "description": "SA has CRITICAL or HIGH privilege on the project (roles/owner or escalation-capable roles). SA can act as the project's administrator.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanReadSecrets",
+      "description": "Identity has secretmanager.versions.access on the secret. Can read the secret value \u2014 a terminal attack goal. Secret values often contain credentials enabling further lateral movement.",
+      "is_traversable": true
+    },
+    {
+      "name": "GCP_CanEditProject",
+      "description": "NON-TRAVERSABLE. Identity has roles/editor \u2014 can create/modify resources but NOT set IAM. Does not give full project control. Supporting edge; use Cypher to find escalation paths via compute/function creation.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanViewProject",
+      "description": "NON-TRAVERSABLE. Read-only access to a GCP project. No control of destination.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_HasRoleOnProject",
+      "description": "NON-TRAVERSABLE. Identity has a custom or service-scoped IAM role. May not confer meaningful control \u2014 informational edge for Cypher exploration.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_AdministerProject",
+      "description": "NON-TRAVERSABLE. Identity has a generic admin role (not owner or IAM admin). Partial control \u2014 kept non-traversable to avoid false positive paths.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_ManageProjectStorage",
+      "description": "NON-TRAVERSABLE. Identity has storage.admin. Controls bucket policies only, not the full project.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_ManageProjectBigQuery",
+      "description": "NON-TRAVERSABLE. Identity has bigquery.admin. Controls BigQuery datasets only, not the full project.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanSignBlob",
+      "description": "NON-TRAVERSABLE. Identity has iam.serviceAccounts.signBlob \u2014 signs arbitrary data as the SA. Partial capability; alone does not give full SA control. Supporting edge (combine with others via post-processing or Cypher).",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanSignJWT",
+      "description": "NON-TRAVERSABLE. Identity has iam.serviceAccounts.signJwt \u2014 signs JWTs as the SA for service-to-service auth. Partial capability; not full SA control. Supporting edge.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanModifyBucketPoliciesInProject",
+      "description": "NON-TRAVERSABLE. Identity has storage.buckets.setIamPolicy project-wide. Gives access to bucket data only; does not give full project control.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanCreateComputeInstance",
+      "description": "NON-TRAVERSABLE. Identity has compute.instances.create. Can deploy a VM with an attached SA \u2014 escalation path to SA control, but the destination node is the project (not the SA). Use Cypher to trace to the target SA.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanChangeInstanceServiceAccount",
+      "description": "NON-TRAVERSABLE. Identity has compute.instances.setServiceAccount. Can hijack the SA on an existing VM \u2014 escalation to SA control. Destination is project; use Cypher to find the SA.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanCreateCloudFunction",
+      "description": "NON-TRAVERSABLE. Identity has cloudfunctions.functions.create. Can deploy a function running as a SA \u2014 escalation to SA control. Destination is project; use Cypher to trace the SA.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanReadSecretMetadata",
+      "description": "NON-TRAVERSABLE. Identity has secretmanager.secrets.get (metadata only, not secret values). Cannot exploit the secret value. Supporting edge.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanReadSecretsInProject",
+      "description": "NON-TRAVERSABLE. Identity has project-wide Secret Manager read access. Can read secrets but does not give full project control. Supporting edge.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_ContainsServiceAccount",
+      "description": "NON-TRAVERSABLE. Structural: a GCP project contains this service account. Project boundary does not imply attack control of the SA.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsStorageBucket",
+      "description": "NON-TRAVERSABLE. Structural: a GCP project owns this storage bucket. Project ownership does not directly give read/write access to bucket contents.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsSecret",
+      "description": "NON-TRAVERSABLE. Structural: a GCP project owns this secret. Project boundary does not directly give access to secret values.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_OwnsDataset",
+      "description": "NON-TRAVERSABLE. Structural: a GCP project owns this BigQuery dataset. Informational containment edge.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_HasGoogleOwnedSA",
+      "description": "NON-TRAVERSABLE. Informational: project uses a Google-managed SA. Not user-controllable.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanAccessLogStream",
+      "description": "NON-TRAVERSABLE. Identity can read a GCP log stream. Reading logs is reconnaissance, not control of the sink or its resources.",
+      "is_traversable": false
+    },
+    {
+      "name": "GCP_CanViewSensitiveLogs",
+      "description": "NON-TRAVERSABLE. SA with logging permissions can view sensitive log data. Reading logs does not control the log sink.",
+      "is_traversable": false
+    }
+  ]
+}

@@ -28,7 +28,7 @@ output/
 !gcp_icons.json
 
 # Virtual environment
-.venv/
+../../.venv/
 venv/
 env/
 
@@ -48,6 +48,9 @@ Thumbs.db
 credentials.json
 service-account.json
 cred.json
+
+#Not Schema
+!schema_GCP.json
 
 # Logs
 *.log
